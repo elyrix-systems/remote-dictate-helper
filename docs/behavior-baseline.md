@@ -64,3 +64,18 @@ reported reinstalling the app, granting Accessibility again, and successful,
 stable operation on the local Mac. This is user-reported acceptance of the
 reinstall and permission flow on that existing Mac account. It does not establish
 a clean-account installation or Developer ID signing/notarization.
+
+## Local release candidate: 1.0.1
+
+On 2026-10-05, the locally built ad-hoc 1.0.1 candidate replaced the installed
+1.0.0. The owner renewed Accessibility and confirmed the following physical
+checks in Apple Screen Sharing:
+
+- Ordinary local copy and manual remote paste arrived exactly once.
+- Two consecutive Flow dictations inserted once each without a leading `v`.
+- The original local clipboard marker was preserved after the transfers.
+
+The source changes remove retired paths and diagnostic polling while retaining
+the accepted paste protocol. Automated regression, privacy and bundle checks
+also passed. These trials validate the local candidate; they do not independently
+retest superwhisper, Valis or a browser-downloaded GitHub package.

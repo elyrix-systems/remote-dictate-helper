@@ -4,6 +4,9 @@
 
 Dictate on your Mac. Paste into a remote Mac through **Apple Screen Sharing**.
 
+[Product website](https://elyrix-systems.com/remote-dictate-helper/) ·
+[Elyrix Systems](https://elyrix-systems.com)
+
 Remote Dictate Helper is a small, open-source macOS menu bar app for clipboard-based
 voice dictation. It has been tested locally with **Wispr Flow**, **superwhisper**
 and **Valis**, including superwhisper push-to-talk in a remote Codex text field.

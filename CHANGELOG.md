@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 — 2026-10-05
+
+- Add **Product Website** to the menu bar menu, opening the Remote Dictate Helper
+  page on elyrix-systems.com in the default browser.
+- Add website links to the README and DMG installation notes.
+- Record the owner's successful reinstall and renewed Accessibility grant for 1.0.
+  The dictation, paste interception and clipboard restoration protocol is unchanged.
+
 ## 1.0.0 — 2026-10-05
 
 - First stable release for Apple silicon and macOS 26+, using the locally

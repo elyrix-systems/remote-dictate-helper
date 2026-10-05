@@ -61,6 +61,9 @@ Your dictation app supplies the microphone and transcript. No remote installatio
 Updates: quit the existing helper normally before replacing it in Applications.
 Never force quit while it is restoring your clipboard.
 
+Product website:
+https://elyrix-systems.com/remote-dictate-helper/
+
 Source, documentation and releases:
 https://github.com/elyrix-systems/remote-dictate-helper
 EOF

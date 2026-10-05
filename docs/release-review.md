@@ -65,8 +65,9 @@ Cancel discards a temporary list removal without changing saved settings.
 The owner re-granted Accessibility after the ad-hoc update and confirmed that
 this same window changed to **Allowed ✓**.
 First-use readiness and permission-loss reopening have automated coverage.
-The browser-download permission flow remains a physical integration check;
-no claim of clean-account Gatekeeper acceptance is made.
+After publication, the owner reported a successful reinstall, renewed Accessibility
+grant and stable local operation. See [the 1.0 acceptance record](behavior-baseline.md#stable-release-100).
+No claim of clean-account Gatekeeper acceptance is made.
 
 ## Publication controls
 

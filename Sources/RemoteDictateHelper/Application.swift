@@ -85,7 +85,8 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         let scope = NSMenuItem(title: "Apple Screen Sharing only", action: nil, keyEquivalent: "")
         scope.isEnabled = false; menu.addItem(scope)
         for (title, action, key) in [
-            ("Settings…", #selector(openSettings), ",")
+            ("Settings…", #selector(openSettings), ","),
+            ("Product Website", #selector(openProductWebsite), "")
         ] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
             item.target = self; menu.addItem(item)
@@ -95,6 +96,10 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         quit.target = self; menu.addItem(quit)
     }
     @objc private func quit() { NSApp.terminate(nil) }
+    @objc private func openProductWebsite() {
+        guard let url = URL(string: "https://elyrix-systems.com/remote-dictate-helper/") else { return }
+        NSWorkspace.shared.open(url)
+    }
     private func cancelCurrentOperation() {
         operationGeneration += 1
         runningTask?.cancel(); runningTask = nil

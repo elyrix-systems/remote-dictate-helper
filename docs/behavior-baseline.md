@@ -56,3 +56,11 @@ It does not establish a clean browser-download/Gatekeeper experience on a new
 account, creation of the new local signing certificate, Developer ID signing or
 Apple notarization. Those distribution checks remain separate. No real dictated
 text, clipboard payloads or machine-specific paths are included in this record.
+
+## Stable release: 1.0.0
+
+On 2026-10-05, after publication of the GitHub-built stable release, the owner
+reported reinstalling the app, granting Accessibility again, and successful,
+stable operation on the local Mac. This is user-reported acceptance of the
+reinstall and permission flow on that existing Mac account. It does not establish
+a clean-account installation or Developer ID signing/notarization.

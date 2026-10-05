@@ -79,7 +79,7 @@ final class CaptureTests {
             let result = try monitor.completeIfReleased(id)!
             precondition(result.payload.text == "same payload" && result.original.snapshot == original)
             let restore = LocalClipboardRestoration(board: board, now: { time })
-            let session = try restore.begin(observedOriginal: result.original.snapshot, capturedRevision: result.original.revision)
+            let session = try restore.begin(observedOriginal: result.original.snapshot)
             let baseline = try restore.captureReplayBaseline(releasedRevision: result.releasedRevision, session: session)
             try restore.writeCapturedSnapshot(result.payload.snapshot, text: result.payload.text, session: session, replacing: baseline)
             restore.finish(session)
@@ -121,7 +121,7 @@ final class CaptureTests {
         setup(); let late = capture(); monitor.observe(up); copy("original")
         let released = try monitor.completeIfReleased(late)!
         let restore = LocalClipboardRestoration(board: board)
-        let session = try restore.begin(observedOriginal: released.original.snapshot, capturedRevision: released.original.revision)
+        let session = try restore.begin(observedOriginal: released.original.snapshot)
         let baseline = try restore.captureReplayBaseline(releasedRevision: released.releasedRevision, session: session)
         copy("original")
         refuse { try restore.writeCapturedSnapshot(released.payload.snapshot, text: released.payload.text, session: session, replacing: baseline) }

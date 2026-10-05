@@ -1,10 +1,7 @@
 import Foundation
 
-public enum ClipboardReturnPolicy: String, Codable, CaseIterable, Sendable {
+public enum ClipboardReturnPolicy: String, Codable, Sendable {
     case restoresPrevious, keepsTranscript
-    public var title: String {
-        self == .restoresPrevious ? "App restores the previous clipboard" : "App leaves the dictated text in the clipboard"
-    }
 }
 
 public struct DictationSource: Codable, Equatable, Sendable {
@@ -25,7 +22,6 @@ public struct DictationSource: Codable, Equatable, Sendable {
 
 public struct AppSettings: Codable, Equatable, Sendable {
     public static let currentSchemaVersion = 4
-    public var settingsSchemaVersion = currentSchemaVersion
     public var sources: [DictationSource] = [
         DictationSource(bundleIdentifier: "com.electron.wispr-flow", name: "Wispr Flow"),
         DictationSource(bundleIdentifier: "com.superduper.superwhisper", name: "superwhisper"),
@@ -52,9 +48,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(Self.currentSchemaVersion, forKey: .settingsSchemaVersion)
         try c.encode(sources, forKey: .sources)
-    }
-    public func source(for identifier: String?) -> DictationSource? {
-        sources.first { $0.matches(identifier) }
     }
 }
 

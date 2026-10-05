@@ -32,7 +32,6 @@ final class InterceptionTests {
         expectNil(try monitor.completeIfReleased(id), "Restoring apps must release the actual revision")
         copy("original")
         let result = try expectUnwrap(monitor.completeIfReleased(id))
-        expectTrue(result.intercepted)
         expectEqual(result.payload.text, "dictation")
         monitor.discard(id)
         // The same text in a fresh revision is another transaction.

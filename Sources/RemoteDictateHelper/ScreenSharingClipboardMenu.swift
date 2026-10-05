@@ -123,24 +123,14 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
     }
 
     func readState() throws -> SharedClipboardMenuState {
-        try readState(measure: { _, _ in })
-    }
-
-    private func readState(measure: (String, TimeInterval) -> Void) throws -> SharedClipboardMenuState {
-        var stageStart = ProcessInfo.processInfo.systemUptime
         let items = try menuItems()
-        measure("resolve", ProcessInfo.processInfo.systemUptime - stageStart)
-        stageStart = ProcessInfo.processInfo.systemUptime
-        // Optional diagnostic metadata must not add a new transition gate.
+        // Completion needs command availability as well as the checkmark.
+        // A missing attribute must not block the transfer transition itself.
         let sharedEnabled = (try? Self.attribute(items.shared, kAXEnabledAttribute)) as? NSNumber
         lastSharedCommandEnabled = sharedEnabled?.boolValue
-        measure("shared-enabled", ProcessInfo.processInfo.systemUptime - stageStart)
-        stageStart = ProcessInfo.processInfo.systemUptime
         var mark: CFTypeRef?
         AXUIElementSetMessagingTimeout(items.shared, 0.75)
         let result = AXUIElementCopyAttributeValue(items.shared, kAXMenuItemMarkCharAttribute as CFString, &mark)
-        measure("checkmark", ProcessInfo.processInfo.systemUptime - stageStart)
-        stageStart = ProcessInfo.processInfo.systemUptime
         let checked: Bool
         if result == .noValue {
             checked = false
@@ -152,7 +142,6 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
         guard let enabled = try Self.attribute(items.send, kAXEnabledAttribute) as? NSNumber else {
             throw ScreenSharingClipboardMenuError.menuUnavailable
         }
-        measure("send-enabled", ProcessInfo.processInfo.systemUptime - stageStart)
         return SharedClipboardMenuState(sharedClipboardEnabled: checked, sendClipboardEnabled: enabled.boolValue)
     }
 
@@ -161,29 +150,9 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
         // application's selected connection is still the captured window.
         try validateConnection()
         trace("setting requested=\(enabled) revision=\(pasteboard.changeCount) frontmost=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == pid)")
-        let started = ProcessInfo.processInfo.systemUptime
-        var reads = 0
-        var readSeconds: TimeInterval = 0
-        var longestRead: TimeInterval = 0
-        var pauseSeconds: TimeInterval = 0
-        var phaseSeconds: [String: TimeInterval] = [:]
-        defer {
-            let total = Int((ProcessInfo.processInfo.systemUptime - started) * 1000)
-            let phases = ["resolve", "shared-enabled", "checkmark", "send-enabled"].map {
-                "\($0)Ms=\(Int(phaseSeconds[$0, default: 0] * 1000))"
-            }.joined(separator: " ")
-            trace("setting timing requested=\(enabled) totalMs=\(total) reads=\(reads) readMs=\(Int(readSeconds * 1000)) maxReadMs=\(Int(longestRead * 1000)) pauseMs=\(Int(pauseSeconds * 1000)) \(phases)")
-        }
         try SharedClipboardSettingTransition().run(
             enabled: enabled,
-            readState: {
-                let before = ProcessInfo.processInfo.systemUptime
-                defer {
-                    let elapsed = ProcessInfo.processInfo.systemUptime - before
-                    reads += 1; readSeconds += elapsed; longestRead = max(longestRead, elapsed)
-                }
-                return try self.readState { phase, elapsed in phaseSeconds[phase, default: 0] += elapsed }
-            },
+            readState: { try self.readState() },
             toggleOnce: {
                 if !enabled { try self.validateTargetAndClipboard() }
                 try Self.press(self.menuItems().shared, command: "Use Shared Clipboard")
@@ -191,11 +160,6 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
             },
             onState: { state in
                 self.trace("setting observed=\(state.sharedClipboardEnabled) sharedCommandEnabled=\(self.lastSharedCommandEnabled.map(String.init) ?? "unknown") sendEnabled=\(state.sendClipboardEnabled) revision=\(self.pasteboard.changeCount)")
-            },
-            pause: { seconds in
-                let before = ProcessInfo.processInfo.systemUptime
-                Thread.sleep(forTimeInterval: seconds)
-                pauseSeconds += ProcessInfo.processInfo.systemUptime - before
             }
         )
         trace("setting confirmed=\(enabled) revision=\(pasteboard.changeCount)")

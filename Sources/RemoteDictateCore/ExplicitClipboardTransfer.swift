@@ -23,10 +23,6 @@ public protocol ExplicitClipboardTransferDriver {
     func sendRestoredClipboard(validating validateClipboard: () throws -> Void) throws
 }
 
-public extension ExplicitClipboardTransferDriver {
-    func prepareClipboard() throws {}
-}
-
 public enum ExplicitClipboardTransferError: Error, CustomStringConvertible {
     case sharedClipboardInitiallyOff
     case sendUnavailable
@@ -92,17 +88,10 @@ public final class SharedClipboardTransferLease {
     }
 }
 
-/// One-shot transfer. The caller can hold sharing off through paste and local
-/// restoration, or use run() to restore it immediately for a fixed-buffer test.
+/// One-shot transfer. The caller holds sharing off through paste and local
+/// restoration, then releases the returned lease.
 public struct ExplicitClipboardTransfer {
     public init() {}
-
-    public func run(using driver: any ExplicitClipboardTransferDriver) throws {
-        let lease = try begin(using: driver)
-        try lease.restoreSharing()
-        // Restoring sharing can replace the clipboard before a diagnostic paste.
-        try driver.validateTargetAndClipboard()
-    }
 
     public func begin(using driver: any ExplicitClipboardTransferDriver) throws -> SharedClipboardTransferLease {
         try driver.validateTargetAndClipboard()

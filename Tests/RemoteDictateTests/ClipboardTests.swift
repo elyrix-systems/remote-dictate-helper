@@ -7,9 +7,8 @@ final class ClipboardTests {
         var clock: TimeInterval = 0
         var outcomes: [LocalClipboardRestoration.Outcome] = []
         var receipt: LocalClipboardRestoration.Receipt?
-        var metadata: [String] = []
         let restore = LocalClipboardRestoration(board: board, now: { clock },
-            onOutcome: { outcomes.append($0); receipt = $1 }, onMetadata: { metadata.append($0) })
+            onOutcome: { outcomes.append($0); receipt = $1 })
         func copy(_ text: String, html: String? = nil) {
             let item = NSPasteboardItem(); expectTrue(item.setString(text, forType: .string))
             if let html { expectTrue(item.setData(Data(html.utf8), forType: .html)) }
@@ -19,9 +18,10 @@ final class ClipboardTests {
             for newCopy in [nil, "newer copy", "DICTATION-PRIVATE"] as [String?] {
                 copy("ORIGINAL-PRIVATE", html: "<b>ORIGINAL-PRIVATE</b>")
                 let original = try LocalClipboardSnapshot.capture(board)
-                let session = try restore.begin(observedOriginal: original, capturedRevision: board.changeCount)
+                let originalRevision = board.changeCount
+                let session = try restore.begin(observedOriginal: original)
                 copy("DICTATION-PRIVATE", html: "<p>Текст</p>")
-                let payload = try expectUnwrap(CapturedClipboard.read(from: board, after: session.capturedRevision))
+                let payload = try expectUnwrap(CapturedClipboard.read(from: board, after: originalRevision))
                 expectTrue(payload.encodingMarkerAdded)
                 copy("ORIGINAL-PRIVATE") // Provider/bridge returns different formats.
                 let baseline = try restore.captureReplayBaseline(releasedRevision: board.changeCount, session: session)
@@ -47,10 +47,13 @@ final class ClipboardTests {
                     expectEqual(board.string(forType: .string), newCopy)
                     expectNil(receipt)
                 }
-                let after = outcomes.count; restore.restoreIfDue(); expectEqual(outcomes.count, after)
+                let after = outcomes.count
+                copy("copy after completion")
+                clock += 20; restore.restoreIfDue()
+                expectEqual(outcomes.count, after)
+                expectEqual(board.string(forType: .string), "copy after completion", "Completed restoration never rewrites a later copy")
             }
         }
-        expectTrue(metadata.allSatisfy { !$0.contains("ORIGINAL-PRIVATE") && !$0.contains("DICTATION-PRIVATE") })
     }
 
     @MainActor func testRichMultilingualPayload() throws {
@@ -88,11 +91,12 @@ final class ClipboardTests {
         let restore = LocalClipboardRestoration(board: board, now: { clock })
         board.clearContents()
         let empty = try LocalClipboardSnapshot.capture(board)
-        let first = try restore.begin(observedOriginal: empty, capturedRevision: board.changeCount)
+        let originalRevision = board.changeCount
+        let first = try restore.begin(observedOriginal: empty)
         board.clearContents(); board.setString("text", forType: .string)
-        let payload = try expectUnwrap(CapturedClipboard.read(from: board, after: first.capturedRevision))
+        let payload = try expectUnwrap(CapturedClipboard.read(from: board, after: originalRevision))
         let baseline = try restore.captureReplayBaseline(releasedRevision: board.changeCount, session: first)
-        let second = try restore.begin(observedOriginal: empty, capturedRevision: first.capturedRevision)
+        let second = try restore.begin(observedOriginal: empty)
         expectThrows(try restore.writeCapturedSnapshot(payload.snapshot, text: payload.text, session: second, replacing: baseline))
         try restore.writeCapturedSnapshot(payload.snapshot, text: payload.text, session: first, replacing: baseline)
         restore.recordPastePosted(first); restore.finish(first); clock = 0.2; restore.restoreIfDue()

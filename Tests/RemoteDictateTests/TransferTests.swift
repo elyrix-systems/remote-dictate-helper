@@ -65,8 +65,11 @@ func testExplicitClipboardTransferRecovery() throws {
     for fault in TransferProbe.Fault.allCases {
         let driver = TransferProbe(fault)
         var failure: Error?
-        do { try transaction.run(using: driver) } catch { failure = error }
-        try check((failure == nil) == (fault == .none), "Unexpected completion for \(fault)")
+        do {
+            let lease = try transaction.begin(using: driver)
+            try lease.restoreSharing()
+        } catch { failure = error }
+        try check((failure == nil) == [.none, .clipboardChangedAfterRestore].contains(fault), "Unexpected completion for \(fault)")
         try check(driver.actions.filter { $0 == "send" }.count <= 1, "Never retry Send Clipboard")
         if fault == .restore {
             guard let transferError = failure as? ExplicitClipboardTransferError,
@@ -97,14 +100,15 @@ func testExplicitClipboardTransferRecovery() throws {
     let initiallyOff = TransferProbe()
     initiallyOff.enabled = false
     do {
-        try transaction.run(using: initiallyOff)
+        _ = try transaction.begin(using: initiallyOff)
         throw TransferProbeError.invariant("Initially disabled sharing must be rejected")
     } catch ExplicitClipboardTransferError.sharedClipboardInitiallyOff {}
     try check(initiallyOff.actions.isEmpty && !initiallyOff.enabled, "Preserve user's initial off setting")
 
     let preparedSend = TransferProbe()
     preparedSend.sendRequiresPreparation = true
-    try transaction.run(using: preparedSend)
+    let preparedLease = try transaction.begin(using: preparedSend)
+    try preparedLease.restoreSharing()
     try check(preparedSend.actions == ["off", "prepare", "send", "on"], "Check Send availability after preparing text")
 
     // The automatic path keeps sharing off until its caller finishes restoring

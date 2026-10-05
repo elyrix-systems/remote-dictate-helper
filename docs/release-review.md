@@ -1,15 +1,14 @@
-# Private release review: 0.8.0
+# Release review: 1.0.0
 
-This repository remains **private**. The owner will review the files, history and
-downloaded application before making a separate publication decision. Neither CI
-nor the packaging workflow changes repository visibility.
+The owner authorized public source and a stable 1.0 release on 2026-10-05.
+Neither CI nor the packaging workflow changes repository visibility.
 
 ## What is included
 
 | Location | Contents |
 | --- | --- |
 | `Sources/` | Native menu bar app, paste interception, clipboard coordination, settings, first-run permissions and icon drawing. |
-| `Tests/` | Regression tests for the current paste protocol, cancellation, restoration, formatting, key guards, settings and setup readiness. |
+| `Tests/` | Regression tests for the current paste protocol, cancellation, restoration, formatting, key guards, settings and first-use readiness. |
 | `scripts/` | Source installation, signing, DMG packaging, artifact verification, privacy checks and their tests. |
 | `.github/` | Read-only PR checks, draft release packaging, maintainer ownership, contribution and issue templates. |
 | `assets/` | Application icon. The menu bar icon is drawn by the app. |
@@ -40,17 +39,17 @@ the owner's review of the contents. Scanner results do not replace that review.
 
 - Apple silicon only; macOS 26 or later.
 - Source installation: `make install`.
-- Downloadable preview: drag-to-Applications DMG with a SHA-256 checksum.
+- Download: drag-to-Applications DMG with a SHA-256 checksum.
 - Release executables have debug records stripped before signing; DMG verification
   rejects embedded home paths and unexpected files.
-- Preview is ad-hoc signed and **not Apple notarized**. First launch may require
+- The app is ad-hoc signed and **not Apple notarized**. First launch may require
   Open Anyway, and managed Macs may block it.
-- First-run setup covers Accessibility and dictation-source selection. It does
+- One Settings window covers Accessibility and dictation-source selection. It does
   not ask users to manage the helper's clipboard synchronization.
 - Future Developer ID signing and notarization are prepared but still require a
   company Apple Developer membership, credentials and a real signed-release test.
 
-The owner has accepted the revised settings/setup layout. The installed 0.8.0
+The owner accepted the 0.8.0 settings/setup layout. The installed 0.8.0
 preview passed user-confirmed checks with Flow, superwhisper and Valis, including
 clipboard preservation; Accessibility remained usable after normal Quit/relaunch.
 See the [physical acceptance record](behavior-baseline.md#installed-preview-080).
@@ -58,9 +57,20 @@ These checks do not prove a clean browser-download installation on a new account
 That remaining check should follow the
 [physical release checklist](distribution.md#physical-release-checklist).
 
-## Before a later public launch
+Version 1.0 keeps the accepted transfer modules unchanged. Local checks passed
+the native/Python regression suites, source/history privacy scan, redacted secret
+scan and workflow validation. The single Settings window was inspected on the
+local Mac: missing permission opens it, all three app icons are visible, and
+Cancel discards a temporary list removal without changing saved settings.
+The owner re-granted Accessibility after the ad-hoc update and confirmed that
+this same window changed to **Allowed ✓**.
+First-use readiness and permission-loss reopening have automated coverage.
+The browser-download permission flow remains a physical integration check;
+no claim of clean-account Gatekeeper acceptance is made.
 
-The owner first approves publication. Then enable and verify approval for all
-external-fork workflow runs, confirm repository protections and test a draft DMG
-download. Publish the reviewed release separately. Current automation only creates
-release drafts, with bounded GitHub-hosted jobs and no secrets available to PRs.
+## Publication controls
+
+Require approval for all external-fork workflow runs and keep branch protections.
+Review each draft DMG before publication. Automation only creates release drafts,
+with bounded GitHub-hosted jobs and no secrets available to PRs. Stable release
+status does not imply Developer ID signing or notarization.

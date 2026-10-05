@@ -6,10 +6,10 @@ compiled executable declare macOS 26.0 as their minimum version.
 ## Installation paths
 
 End users download an Apple silicon DMG from GitHub Releases, drag the app to
-Applications, eject the image and open the installed copy. The first-run setup
+Applications, eject the image and open the installed copy. The single Settings window
 requests Accessibility only after a click and watches for the grant. It provides
 an app list with local application icons. Clipboard coordination is automatic;
-there is no shared-clipboard checkbox in setup. Permissions cannot be pre-granted
+there is no separate setup dialog or shared-clipboard checkbox. Permissions cannot be pre-granted
 by an installer. No helper or microphone
 configuration is installed on the remote Mac.
 
@@ -39,7 +39,7 @@ This does not establish production signing or universal remote compatibility.
 
 | Download | What the user should expect |
 | --- | --- |
-| Unnotarized preview | Ad-hoc signed. Gatekeeper can block launch; a per-app Open Anyway override may be available. Managed Macs may forbid it. Updates may require Accessibility approval again. |
+| Unnotarized download | Ad-hoc signed. Gatekeeper can block launch; a per-app Open Anyway override may be available. Managed Macs may forbid it. Updates may require Accessibility approval again. |
 | Developer ID + notarization | Normal downloaded-app confirmation, then explicit Accessibility approval. Requires a paid Apple Developer Program membership and signing credentials. |
 | Locally built | User reviews/builds source and creates a local signing identity for their own rebuilds. That certificate is never distributed to other users. |
 
@@ -48,7 +48,7 @@ Gatekeeper, stripping quarantine, or trusting a publisher's self-signed root.
 See [Apple distribution](https://developer.apple.com/developer-id/) and
 [opening downloaded apps](https://support.apple.com/en-us/102445).
 
-## Build a preview DMG
+## Build an unnotarized DMG
 
 ```zsh
 : "Computer: Local Mac | Account: $USER"
@@ -72,7 +72,8 @@ build paths. The checksum detects changed bytes, not publisher authenticity.
 2. Pass CI and physical checks appropriate to the change, then merge to `main`.
 3. Create and push an immutable annotated `vMAJOR.MINOR.PATCH` tag at that commit.
 4. **Package release** runs tests, builds the Apple silicon DMG and creates a draft
-   with the corresponding changelog section. Tag builds default to preview mode.
+   with the corresponding changelog section. Tag builds default to ad-hoc signing
+   (the internal `preview` mode). Signing mode does not determine release stability.
 5. Review the draft and test a browser-downloaded copy on a clean Mac account.
    Publish only after its signature/permissions and actual remote paste work.
 
@@ -109,11 +110,9 @@ The signed path must be validated with real credentials before claiming it works
 
 ## Contribution and Actions controls
 
-The repository is currently private pending the owner's source and history review.
-Only the owner may authorize publication. The external-fork approval setting below
-must be enabled and verified when the repository becomes public; GitHub does not
-offer that setting for this private repository. Release automation creates drafts
-and never changes repository visibility.
+The owner authorized public source and version 1.0 on 2026-10-05. External-fork
+workflow approval and repository protections must remain enabled. Release
+automation creates drafts and never changes repository visibility.
 
 Use standard GitHub-hosted runners only. Standard runner compute is free for
 public repositories; private runs, larger runners and storage have separate
@@ -137,13 +136,13 @@ they cannot guarantee that every malicious contribution will be detected.
 On a clean local Mac account, using a **browser-downloaded** DMG:
 
 1. Check the Apple silicon build on a supported Mac. Intel is not supported.
-2. Install via Finder, eject the DMG, and confirm first launch/setup.
-3. Grant Accessibility manually; verify setup detects it and the filter starts.
+2. Install via Finder, eject the DMG, and confirm first launch opens Settings.
+3. Grant Accessibility manually; verify Settings detects it and the filter starts.
 4. Verify ordinary shared clipboard paste before testing dictation.
 5. Test actual remote insertion and local clipboard restoration, including toggle
    dictation, push-to-talk and leaving/returning before stopping recording.
 6. Test a normal Quit/update and persistence of settings/permissions.
-7. Inspect light/dark menu icon, setup and Settings; use keyboard navigation.
+7. Inspect light/dark menu icon and Settings; use keyboard navigation.
 
 Do not simulate a clean Gatekeeper/TCC installation by clearing the maintainer's
 permissions. Local signed installation is not proof of the downloaded preview flow.

@@ -10,7 +10,7 @@ The custom native runner works with Command Line Tools without XCTest.
 
 | Suite | Behavior protected |
 | --- | --- |
-| Settings | Defaults, exact/dotted source IDs, excluded apps, schema migration, removed pause/method fields, retained clipboard policy and source selection. |
+| Settings | Defaults, exact/dotted source IDs, excluded apps, schema migration, retained clipboard policy/source selection, first-use readiness and reopening Settings after permission loss. |
 | Utilities | Settings round-trip and malformed-file preservation; append-only metadata logging, private new log files and refusal to follow a log symlink. |
 | Build tools | Exact signing identity lookup, missing-certificate refusal, explicit ad-hoc mode, credential-safe errors, running-app refusal and rollback after a failed installation replacement. |
 | Capture | Empty results, same text in distinct revisions, original snapshot selection, bounded history, focus/input cancellation, no queued or stale replay. |

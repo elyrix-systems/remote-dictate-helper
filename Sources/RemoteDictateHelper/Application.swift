@@ -13,7 +13,6 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     private var runningTask: Task<Void, Never>?
     private var operationGeneration = 0
     private var settingsWindowController: SettingsWindowController?
-    private var setupWindowController: SetupWindowController?
     private var lastError: String?
     private var clipboardSession: LocalClipboardRestoration.Session?
     private var sharedClipboardLease: SharedClipboardTransferLease?
@@ -60,8 +59,9 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         configureMonitor()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
         appendLog("app launched version=\(version)")
-        if !UserDefaults.standard.bool(forKey: SetupWindowController.completionKey) || !AccessibilityPermission.isTrusted(prompt: false) {
-            openSetup()
+        if SettingsReadiness.shouldOpenOnLaunch(completed: UserDefaults.standard.bool(forKey: SettingsWindowController.completionKey),
+                                               accessibility: AccessibilityPermission.isTrusted(prompt: false)) {
+            openSettings()
         }
     }
     func applicationWillTerminate(_ notification: Notification) { runningTask?.cancel(); monitor?.stop() }
@@ -85,9 +85,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         let scope = NSMenuItem(title: "Apple Screen Sharing only", action: nil, keyEquivalent: "")
         scope.isEnabled = false; menu.addItem(scope)
         for (title, action, key) in [
-            ("Settings…", #selector(openSettings), ","),
-            ("Setup…", #selector(openSetup), ""),
-            ("Check Input Permissions", #selector(checkInputPermissions), "")
+            ("Settings…", #selector(openSettings), ",")
         ] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
             item.target = self; menu.addItem(item)
@@ -97,24 +95,6 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         quit.target = self; menu.addItem(quit)
     }
     @objc private func quit() { NSApp.terminate(nil) }
-    @objc private func openSetup() {
-        guard !busy else { setStatus("Wait for the current transfer before opening setup"); return }
-        if setupWindowController == nil {
-            setupWindowController = SetupWindowController(sources: settings.sources,
-                onSourcesChanged: { [weak self] sources in
-                    guard let self else { return }
-                    var updated = self.settings; updated.sources = sources; self.saveSettings(updated)
-                },
-                onPermissionGranted: { [weak self] in
-                    guard let self, !self.busy else { return false }
-                    self.lastError = nil; self.configureMonitor()
-                    if self.monitor != nil { self.setStatus("Ready") }
-                    return self.monitor != nil
-                })
-        }
-        setupWindowController?.updateSources(settings.sources)
-        setupWindowController?.showWindow(nil); NSApp.activate(ignoringOtherApps: true)
-    }
     private func cancelCurrentOperation() {
         operationGeneration += 1
         runningTask?.cancel(); runningTask = nil
@@ -209,22 +189,31 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     @objc private func openSettings() {
         guard !busy else { setStatus("Wait for the current transfer before changing settings"); return }
         if settingsWindowController == nil {
-            settingsWindowController = SettingsWindowController(settings: settings, onSave: { [weak self] in self?.saveSettings($0) })
+            settingsWindowController = SettingsWindowController(settings: settings,
+                onSave: { [weak self] in try self?.saveSettings($0) },
+                onPermissionGranted: { [weak self] in
+                    guard let self, !self.busy else { return false }
+                    // A revoked grant can leave an existing event tap unusable.
+                    // Recreate it when Settings observes a grant, as first use did.
+                    self.lastError = nil; self.configureMonitor()
+                    if self.monitor != nil { self.setStatus("Ready") }
+                    return self.monitor != nil
+                })
         }
-        settingsWindowController?.settings = settings
+        if settingsWindowController?.window?.isVisible != true {
+            settingsWindowController?.settings = settings
+        }
         settingsWindowController?.showWindow(nil); NSApp.activate(ignoringOtherApps: true)
     }
-    private func saveSettings(_ updated: AppSettings) {
+    private func saveSettings(_ updated: AppSettings) throws {
+        guard !busy else {
+            throw NSError(domain: "RemoteDictateHelper.Settings", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Wait for the current clipboard transfer to finish, then save again."])
+        }
         do {
             try settingsStore.save(updated); settings = updated; lastError = nil
             configureMonitor(); if lastError == nil { setStatus("Idle") }
-        } catch { lastError = "Settings save failed"; setStatus("Error: settings save failed") }
-    }
-    @objc private func checkInputPermissions() {
-        guard !busy else { return }
-        guard AccessibilityPermission.isTrusted(prompt: true) else { setStatus("Error: enable Accessibility for Remote Dictate Helper"); return }
-        lastError = nil; configureMonitor()
-        if lastError == nil { setStatus("Input permission OK") }
+        } catch { lastError = "Settings save failed"; setStatus("Error: settings save failed"); throw error }
     }
     private func setStatus(_ message: String) {
         statusMenuItem.title = message.count > 80 ? String(message.prefix(77)) + "…" : message

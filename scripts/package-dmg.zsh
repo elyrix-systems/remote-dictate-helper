@@ -53,7 +53,7 @@ Remote Dictate Helper
 
 1. Drag Remote Dictate Helper.app to Applications.
 2. Eject this disk image and open the app from Applications.
-3. Follow the setup window to grant Accessibility and choose dictation apps.
+3. In Settings, grant Accessibility and choose dictation apps, then Save.
 
 Runs on your LOCAL Mac. Requires macOS 26 or later and Apple Screen Sharing.
 Your dictation app supplies the microphone and transcript. No remote installation.
@@ -67,7 +67,7 @@ EOF
 if [[ "$mode" == preview ]]; then
   cat >> "$staging/image/Read Me.txt" <<'EOF'
 
-UNNOTARIZED PREVIEW — not signed with an Apple Developer ID.
+UNNOTARIZED DOWNLOAD — not signed with an Apple Developer ID.
 macOS may block its first launch. After verifying the download and deciding you
 trust it, use System Settings > Privacy & Security > Open Anyway, if available.
 Managed Macs may prohibit this. Do not disable Gatekeeper or install certificates.

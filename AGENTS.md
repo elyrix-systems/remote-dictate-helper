@@ -6,7 +6,7 @@ Important boundaries:
 
 - Supported platform: Apple silicon running macOS 26 or later. Keep SwiftPM, app metadata, packaging, CI and user-facing requirements aligned; do not restore older macOS support.
 
-- Keep this repository private until the owner explicitly authorizes publication after reviewing the source and history. Do not change visibility as part of release automation.
+- The owner authorized public source and the stable 1.0 release on 2026-10-05 after source/history review. Release automation still creates drafts for review and must not change repository visibility.
 - The owner authorized a fresh main history from the maintained product snapshot on 2026-10-05. Earlier development and recovery tags are preserved in separate private archives, not imported into this repository. Do not reconnect archived history or rewrite published releases without explicit owner authorization.
 - Read `docs/behavior-baseline.md` before behavior changes. Preserve the accepted paste interception and clipboard restoration protocol; the app does not send Backspace.
 - Every time you ask the user to run a command, put a one-line shell no-op at the top of the command block with only the computer and account, for example: `: "Computer: Local Mac | Account: $USER"`. Keep it simple, make it copy-paste safe in interactive `zsh`, and do this even when it feels obvious.

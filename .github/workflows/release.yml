@@ -53,7 +53,7 @@ jobs:
         run: |
           make test
           make privacy-scan
-      - name: Build unnotarized preview
+      - name: Build unnotarized DMG
         if: env.PACKAGE_MODE == 'preview'
         run: make package
       - name: Sign and notarize with protected credentials
@@ -99,8 +99,7 @@ jobs:
           set -euo pipefail
           cd package
           sha256sum --check ./*.sha256
-          args=()
-          if [[ "$PACKAGE_MODE" == preview ]]; then args+=(--prerelease); fi
+          # Signing mode is independent of release stability. Publication remains manual.
           gh release create "v$RELEASE_VERSION" --verify-tag --draft \
-            --title "Remote Dictate Helper $RELEASE_VERSION" --notes-file RELEASE-NOTES.md "${args[@]}" \
+            --title "Remote Dictate Helper $RELEASE_VERSION" --notes-file RELEASE-NOTES.md \
             ./*.dmg ./*.sha256

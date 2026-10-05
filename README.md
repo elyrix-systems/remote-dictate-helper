@@ -52,14 +52,14 @@ Screen Sharing does not provide confirmation that the remote field consumed it.
 
 ### Download the app
 
-Get the DMG from [Releases](https://github.com/elyrix-systems/remote-dictate-helper/releases).
+Get the DMG from the [latest stable release](https://github.com/elyrix-systems/remote-dictate-helper/releases/latest).
 **Apple silicon only** (M1 or later) running **macOS 26+**.
 
 1. Open the DMG and drag **Remote Dictate Helper.app** to **Applications**.
 2. Eject the disk image, then open the installed app from Applications.
-3. Follow the setup window to grant Accessibility and choose dictation apps.
+3. In **Settings**, grant Accessibility and choose your dictation apps, then Save.
 
-**Current downloads are unnotarized previews.** They are ad-hoc signed, not signed
+**Version 1.0 is stable, but the download is not Apple notarized.** It is ad-hoc signed, not signed
 with an Apple Developer ID. macOS may block the first launch. If you have reviewed
 the source/release and trust it, use **System Settings → Privacy & Security →
 Open Anyway**, where available. Follow [Apple’s instructions](https://support.apple.com/en-us/102445).
@@ -89,7 +89,7 @@ make install
 ```
 
 This one command creates or reuses a **local signing identity**, builds an
-optimized app, installs it in `~/Applications` and opens setup. macOS may ask you
+optimized app, installs it in `~/Applications` and opens Settings on first launch. macOS may ask you
 to allow creation/use of the local key. That identity is only for your own
 rebuilds and keeps Accessibility grants stable; it is not Apple notarization.
 Never share the private key. For an explicitly ad-hoc development build, use
@@ -98,7 +98,7 @@ otherwise stops the build.
 
 Version 0.8.0 introduces the app identifier `systems.elyrix.RemoteDictateHelper`
 and a new local signing identity. On the first upgrade from an earlier version,
-grant Accessibility again in Setup. Your saved dictation app selection is retained.
+grant Accessibility again in Settings. Your saved dictation app selection is retained.
 
 Quit any running helper normally before reinstalling. Replaced bundles are kept
 under `.local-audit/install-backups` in your checkout. Dictation apps are untouched.
@@ -119,12 +119,14 @@ ID signing, and [contributing](CONTRIBUTING.md) to submit a change.
 1. Open Apple Screen Sharing on the local Mac. Enable **Edit → Use Shared
    Clipboard**. Check that ordinary local copy and manual Command+V work in a
    remote text field first.
-2. Launch Remote Dictate Helper and follow **Setup**. Grant Accessibility in
+2. Launch Remote Dictate Helper. Its single **Settings** window includes Accessibility
+   and the dictation app list. Grant Accessibility in
    **System Settings → Privacy & Security → Accessibility** when requested. The
-   helper checks the grant when you return; you can reopen **Setup…** from its
+   helper checks the grant when you return; you can reopen **Settings…** from its
    microphone-and-window menu bar icon at any time. No Microphone, Screen Recording,
    Full Disk Access or System Events Automation permission is requested by this app.
-3. Open **Settings**. Wispr Flow, superwhisper and Valis are included for new
+3. In that same window, choose your dictation apps and **Save**. Wispr Flow,
+   superwhisper and Valis are included for new
    installations. Use **Add App…** or **Remove** to manage your dictation apps.
    Existing source selections are preserved on upgrade.
 4. In your dictation app, use clipboard-based paste and keep/restore your previous
@@ -146,8 +148,8 @@ insertion or simulated character typing is a different protocol.
 - **Nothing arrives remotely:** first repeat the ordinary copy/paste check and
   confirm Screen Sharing's shared clipboard is on. Confirm the dictation app is
   listed in Settings and configured to paste via the clipboard.
-- **Error in the menu:** open the helper’s menu for the error. After fixing permissions, use
-  **Check Input Permissions** again. If macOS disabled the event filter, quit and
+- **Error in the menu:** open the helper’s menu for the error. Open **Settings**
+  to check Accessibility and grant it if needed. If macOS disabled the event filter, quit and
   reopen the helper. Do not retry a failed paste blindly; check the remote field.
 - **Waiting to restore:** return to the original Screen Sharing connection so
   clipboard cleanup can finish. Quit also lets pending restoration finish.

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.0 — 2026-10-05
+
+- First stable release for Apple silicon and macOS 26+, using the locally
+  accepted paste protocol with Wispr Flow, superwhisper and Valis.
+- One Settings window for Accessibility and dictation apps, on first launch and
+  from the menu bar. Remove the separate Setup and permission-check menu items.
+- Keep app selection changes pending until Save; Cancel discards them. A failed
+  save keeps the window open. Preserve existing settings and first-use completion.
+- Preserve one intercepted paste, no Backspace, formatted multilingual content,
+  local clipboard restoration and returning to Screen Sharing before dictation ends.
+- Provide an Apple-silicon DMG and SHA-256 checksum built and tested by GitHub
+  Actions. The download is ad-hoc signed and **not Apple notarized**; stable
+  describes the accepted functionality, not Apple certification.
+
 ## 0.8.0 — maintained product snapshot
 
 - Dictate locally with Wispr Flow, superwhisper or Valis and paste into a remote

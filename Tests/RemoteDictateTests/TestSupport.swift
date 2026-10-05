@@ -29,7 +29,7 @@ func expectThrows<T>(_ value: @autoclosure () throws -> T, _ message: String = "
 struct TestRunner {
     @MainActor static func main() async throws {
         testCaptureDecisionDeadline()
-        testSetupReadiness()
+        testSettingsReadiness()
         try testOperationalLog()
         try testSettingsPersistence()
         let settings = SettingsTests(); try settings.testMigrationRemovesUnusedFields(); settings.testSourceScope()

@@ -2,7 +2,7 @@ import AppKit
 import UniformTypeIdentifiers
 import RemoteDictateCore
 
-/// Shared app picker for first-run setup and Settings. Icons come from locally
+/// Dictation app picker in Settings. Icons come from locally
 /// installed apps; an uninstalled source uses the standard generic app symbol.
 @MainActor
 final class DictationSourcesView: NSView, NSTableViewDataSource, NSTableViewDelegate {

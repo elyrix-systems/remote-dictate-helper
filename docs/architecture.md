@@ -5,6 +5,11 @@ clipboard paste, transfers it through Apple Screen Sharing, pastes once and
 restores the original clipboard. There is no database, donor process, microphone
 capture, recording shortcut detector or fallback character deletion.
 
+The SwiftPM core library retains its 1.0 public interfaces for source compatibility.
+Retired convenience methods live in `LegacyCoreCompatibility.swift`; the helper
+does not use them. Compatibility tests cover the old entry points separately
+from the production transfer and restoration tests.
+
 ## Transaction
 
 `idle → captured → source released → clipboard sent → paste posted → restored`

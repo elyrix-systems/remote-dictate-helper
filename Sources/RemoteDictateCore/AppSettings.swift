@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ClipboardReturnPolicy: String, Codable, Sendable {
+public enum ClipboardReturnPolicy: String, Codable, CaseIterable, Sendable {
     case restoresPrevious, keepsTranscript
 }
 
@@ -22,6 +22,10 @@ public struct DictationSource: Codable, Equatable, Sendable {
 
 public struct AppSettings: Codable, Equatable, Sendable {
     public static let currentSchemaVersion = 4
+    /// Retained for source compatibility with 1.0.0 clients. Encoding always
+    /// writes currentSchemaVersion, as it did before this property was retired.
+    @available(*, deprecated, message: "Use AppSettings.currentSchemaVersion; this value does not control encoding.")
+    public var settingsSchemaVersion = currentSchemaVersion
     public var sources: [DictationSource] = [
         DictationSource(bundleIdentifier: "com.electron.wispr-flow", name: "Wispr Flow"),
         DictationSource(bundleIdentifier: "com.superduper.superwhisper", name: "superwhisper"),

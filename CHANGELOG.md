@@ -5,8 +5,9 @@
 - Add **Product Website** to the menu bar menu, opening the Remote Dictate Helper
   page on elyrix-systems.com in the default browser.
 - Add website links to the README and DMG installation notes.
-- Remove unused Settings callbacks and labels, the old fixed-clipboard test path,
-  and redundant capture flags. Keep source selection and settings migration.
+- Remove unused Settings callbacks and redundant capture flags. Isolate retired
+  public core helpers as compatibility APIs for existing 1.0 library clients;
+  the application uses the production transfer lease. Keep settings migration.
 - Stop the extra diagnostic clipboard polling during and after restoration and
   remove detailed menu timing counters. Keep operational status and error logs.
 - Require the captured source-release baseline for every replay; preserve

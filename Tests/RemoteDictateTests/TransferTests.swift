@@ -1,5 +1,35 @@
 import RemoteDictateCore
 
+/// A 1.0 client conformer that relies on the default clipboard preparation.
+private struct LegacyTransferDriver: ExplicitClipboardTransferDriver {
+    let probe: TransferProbe
+    func readState() throws -> SharedClipboardMenuState { try probe.readState() }
+    func validateTargetAndClipboard() throws { try probe.validateTargetAndClipboard() }
+    func setSharedClipboardEnabled(_ enabled: Bool) throws { try probe.setSharedClipboardEnabled(enabled) }
+    func sendClipboard() throws { try probe.sendClipboard() }
+    func sendRestoredClipboard(validating validate: () throws -> Void) throws {
+        try probe.sendRestoredClipboard(validating: validate)
+    }
+}
+
+func testLegacyCoreCompatibility() throws {
+    var settings = AppSettings()
+    settings.settingsSchemaVersion = 3
+    expectEqual(settings.settingsSchemaVersion, 3)
+    expectNotNil(settings.source(for: "com.electron.wispr-flow.helper"))
+    expectNil(settings.source(for: "com.electron.wispr-flow-other"))
+    expectEqual(ClipboardReturnPolicy.allCases, [.restoresPrevious, .keepsTranscript])
+    expectEqual(ClipboardReturnPolicy.restoresPrevious.title, "App restores the previous clipboard")
+    expectEqual(ClipboardReturnPolicy.keepsTranscript.title, "App leaves the dictated text in the clipboard")
+    let driver = TransferProbe()
+    try ExplicitClipboardTransfer().run(using: LegacyTransferDriver(probe: driver))
+    expectEqual(driver.actions, ["off", "send", "on"])
+    let changed = TransferProbe(.clipboardChangedAfterRestore)
+    expectThrows(try ExplicitClipboardTransfer().run(using: LegacyTransferDriver(probe: changed)),
+                 "The legacy entry point retains post-restoration validation")
+    expectEqual(changed.actions, ["off", "send", "on"])
+}
+
 private enum TransferProbeError: Error { case injectedFailure, invariant(String) }
 
 private final class TransferProbe: ExplicitClipboardTransferDriver {

@@ -1,0 +1,35 @@
+name: Remote app support request
+description: Request or document support for another remote-control app.
+title: "[Target]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Apple Screen Sharing is the only currently proven target. Do not include private hostnames, screenshots, or transcript text.
+  - type: input
+    id: app_name
+    attributes:
+      label: Remote-control app
+      placeholder: "Example: Jump Desktop"
+    validations:
+      required: true
+  - type: input
+    id: bundle_id
+    attributes:
+      label: macOS bundle identifier
+      placeholder: "Example: com.example.RemoteClient"
+  - type: textarea
+    id: clipboard
+    attributes:
+      label: Clipboard behavior
+      description: Does normal local copy then Cmd+V into the remote session work?
+  - type: textarea
+    id: focus
+    attributes:
+      label: Focus behavior
+      description: Does the target stay frontmost during clipboard paste from the dictation app?
+  - type: textarea
+    id: proof
+    attributes:
+      label: Local proof
+      description: What tests have you run?

@@ -1,0 +1,30 @@
+name: Bug report
+description: Report an issue with dictation through Apple Screen Sharing.
+body:
+  - type: markdown
+    attributes:
+      value: "Use synthetic text only. Do not include clipboard contents, account names, private hostnames or raw logs. Report vulnerabilities privately using SECURITY.md."
+  - type: input
+    id: environment
+    attributes:
+      label: Versions
+      description: Helper version, local/remote macOS versions and dictation app/version.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps and result
+      description: What did you expect, what happened, and which RD status appeared?
+    validations:
+      required: true
+  - type: dropdown
+    id: clipboard
+    attributes:
+      label: Does ordinary local copy and manual remote Command+V work?
+      options:
+        - "Yes"
+        - "No"
+        - "Not checked"
+    validations:
+      required: true

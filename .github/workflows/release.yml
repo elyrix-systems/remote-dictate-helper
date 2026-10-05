@@ -1,0 +1,106 @@
+name: Package release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      signing:
+        description: Distribution type (Developer ID needs protected environment secrets)
+        required: true
+        default: preview
+        type: choice
+        options: [preview, notarized]
+
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    if: github.repository == 'elyrix-systems/remote-dictate-helper' && (github.event_name == 'push' || github.ref == 'refs/heads/main')
+    runs-on: macos-26
+    timeout-minutes: 30
+    environment: ${{ inputs.signing == 'notarized' && 'release' || 'preview' }}
+    env:
+      PACKAGE_MODE: ${{ inputs.signing || 'preview' }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      mode: ${{ env.PACKAGE_MODE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release source
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(cat VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git merge-base --is-ancestor HEAD origin/main
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            [[ "$GITHUB_REF_NAME" == "v$version" ]]
+          else
+            [[ "$GITHUB_REF_NAME" == main ]]
+            [[ "$(git rev-parse "v$version^{commit}")" == "$(git rev-parse HEAD)" ]]
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Regression and source privacy checks
+        run: |
+          make test
+          make privacy-scan
+      - name: Build unnotarized preview
+        if: env.PACKAGE_MODE == 'preview'
+        run: make package
+      - name: Sign and notarize with protected credentials
+        if: env.PACKAGE_MODE == 'notarized'
+        env:
+          DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          DEVELOPER_ID_IDENTITY: ${{ secrets.DEVELOPER_ID_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: ./scripts/ci-notarized-package.zsh
+      - name: Write maintained release notes
+        run: python3 scripts/release-notes.py "$PACKAGE_MODE" > .build/package/RELEASE-NOTES.md
+      - name: Verify mounted image without running the app
+        run: ./scripts/verify-package.zsh .build/package/*.dmg
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-package
+          path: .build/package/*
+          if-no-files-found: error
+          retention-days: 7
+
+  draft:
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-package
+          path: package
+      - name: Create reviewable release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.package.outputs.version }}
+          PACKAGE_MODE: ${{ needs.package.outputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd package
+          sha256sum --check ./*.sha256
+          args=()
+          if [[ "$PACKAGE_MODE" == preview ]]; then args+=(--prerelease); fi
+          gh release create "v$RELEASE_VERSION" --verify-tag --draft \
+            --title "Remote Dictate Helper $RELEASE_VERSION" --notes-file RELEASE-NOTES.md "${args[@]}" \
+            ./*.dmg ./*.sha256

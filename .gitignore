@@ -1,0 +1,13 @@
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.log
+/.module-cache/
+/.local-audit/
+
+__pycache__/
+*.pyc
+.DS_Store

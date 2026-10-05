@@ -19,7 +19,7 @@ RULES = {
     "private network address": re.compile(r"\b(?:10\.(?:\d{1,3}\.){2}\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b"),
 }
 FORBIDDEN_SUFFIXES = {".p12", ".pfx", ".pem", ".key", ".sqlite", ".sqlite3", ".db", ".log", ".mobileprovision"}
-BINARY_ASSETS = {"assets/RemoteDictateHelper.icns"}
+BINARY_ASSETS = {"assets/RemoteDictateHelper.icns", "assets/RemoteDictateHelper.png"}
 EMAIL = re.compile(r"[A-Za-z0-9_.+%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 

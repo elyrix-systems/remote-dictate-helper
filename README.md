@@ -1,3 +1,5 @@
+<p><img src="assets/RemoteDictateHelper.png" alt="Remote Dictate Helper — microphone sending text to a remote window" width="112" height="112"></p>
+
 # Remote Dictate Helper
 
 Dictate on your Mac. Paste into a remote Mac through **Apple Screen Sharing**.

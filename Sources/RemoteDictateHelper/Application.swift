@@ -1,0 +1,339 @@
+import AppKit
+import RemoteDictateCore
+
+@MainActor
+final class RemoteDictateApp: NSObject, NSApplicationDelegate {
+    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let menu = NSMenu()
+    private let statusMenuItem = NSMenuItem(title: "Idle", action: nil, keyEquivalent: "")
+    private let settingsStore = SettingsStore(fileURL: defaultSettingsURL())
+    private let log = OperationalLog(destination: defaultLogURL())
+    private var settings = AppSettings()
+    private var monitor: DictationPasteMonitor?
+    private var runningTask: Task<Void, Never>?
+    private var operationGeneration = 0
+    private var settingsWindowController: SettingsWindowController?
+    private var setupWindowController: SetupWindowController?
+    private var lastError: String?
+    private var clipboardSession: LocalClipboardRestoration.Session?
+    private var sharedClipboardLease: SharedClipboardTransferLease?
+    private var sharedClipboardDriver: ScreenSharingClipboardMenu?
+    private let sharingCompletion = DeferredClipboardCompletion()
+    private var completionPastePosted = false
+    private var contextCancelled = false
+    private var quitAfterClipboardRestore = false
+    private var busy: Bool {
+        runningTask != nil || sharedClipboardLease != nil || clipboardRestoration.hasPendingRestore || clipboardSession != nil
+    }
+    private var canAcceptPaste: Bool { !quitAfterClipboardRestore && !busy }
+    private lazy var clipboardRestoration = LocalClipboardRestoration(onOutcome: { [weak self] outcome, receipt in
+        guard let self else { return }
+        self.appendLog("local clipboard restore outcome=\(outcome.rawValue)")
+        if outcome == .failed { self.lastError = "Local clipboard restoration failed"; self.setStatus("Error: clipboard restore failed") }
+        self.restoreSharedClipboardAfterLocalCompletion(receipt: receipt)
+        if self.sharedClipboardLease == nil { self.completePendingQuit(success: outcome != .failed) }
+    }, onMetadata: { [weak self] in self?.appendLog("local clipboard metadata \($0)") })
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Also recognize an earlier installation of this product whose bundle
+        // identifier differs. Never stop another process as part of startup.
+        let ownBundle = Bundle.main.bundleURL.lastPathComponent
+        let others = NSWorkspace.shared.runningApplications.filter { candidate in
+            guard candidate.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return false }
+            if let identifier = Bundle.main.bundleIdentifier, candidate.bundleIdentifier == identifier { return true }
+            return ownBundle.hasSuffix(".app") && candidate.bundleURL?.lastPathComponent == ownBundle
+        }
+        guard others.isEmpty else {
+            let alert = NSAlert(); alert.messageText = "Another helper is running"
+            alert.informativeText = "Quit the other copy of Remote Dictate Helper before opening this one."
+            alert.runModal(); NSApp.terminate(nil); return
+        }
+        do {
+            settings = try settingsStore.loadOrCreate()
+        } catch { lastError = "Settings could not be loaded"; appendLog("settings load failed") }
+        if let iconURL = Bundle.main.url(forResource: "RemoteDictateHelper", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            NSApp.applicationIconImage = icon
+        }
+        configureMenu()
+        setStatus(lastError == nil ? "Idle" : "Error: settings unavailable")
+        configureMonitor()
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
+        appendLog("app launched version=\(version)")
+        if !UserDefaults.standard.bool(forKey: SetupWindowController.completionKey) || !AccessibilityPermission.isTrusted(prompt: false) {
+            openSetup()
+        }
+    }
+    func applicationWillTerminate(_ notification: Notification) { runningTask?.cancel(); monitor?.stop() }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        cancelCurrentOperation()
+        monitor?.stop(); monitor = nil
+        guard clipboardRestoration.hasPendingRestore || sharedClipboardLease != nil else { return .terminateNow }
+        quitAfterClipboardRestore = true
+        setStatus("Finishing before quit; return to Screen Sharing")
+        return .terminateLater
+    }
+    private func configureMenu() {
+        statusItem.button?.title = ""
+        statusItem.button?.image = BrandIcon.menuImage()
+        statusItem.button?.setAccessibilityLabel("Remote Dictate Helper")
+        statusItem.button?.toolTip = "Remote Dictate Helper"
+        statusItem.menu = menu
+        menu.autoenablesItems = false
+        statusMenuItem.isEnabled = false
+        menu.addItem(statusMenuItem); menu.addItem(.separator())
+        let scope = NSMenuItem(title: "Apple Screen Sharing only", action: nil, keyEquivalent: "")
+        scope.isEnabled = false; menu.addItem(scope)
+        for (title, action, key) in [
+            ("Settings…", #selector(openSettings), ","),
+            ("Setup…", #selector(openSetup), ""),
+            ("Check Input Permissions", #selector(checkInputPermissions), "")
+        ] {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.target = self; menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let quit = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
+        quit.target = self; menu.addItem(quit)
+    }
+    @objc private func quit() { NSApp.terminate(nil) }
+    @objc private func openSetup() {
+        guard !busy else { setStatus("Wait for the current transfer before opening setup"); return }
+        if setupWindowController == nil {
+            setupWindowController = SetupWindowController(sources: settings.sources,
+                onSourcesChanged: { [weak self] sources in
+                    guard let self else { return }
+                    var updated = self.settings; updated.sources = sources; self.saveSettings(updated)
+                },
+                onPermissionGranted: { [weak self] in
+                    guard let self, !self.busy else { return false }
+                    self.lastError = nil; self.configureMonitor()
+                    if self.monitor != nil { self.setStatus("Ready") }
+                    return self.monitor != nil
+                })
+        }
+        setupWindowController?.updateSources(settings.sources)
+        setupWindowController?.showWindow(nil); NSApp.activate(ignoringOtherApps: true)
+    }
+    private func cancelCurrentOperation() {
+        operationGeneration += 1
+        runningTask?.cancel(); runningTask = nil
+        monitor?.stop(); monitor = nil
+        contextCancelled = true
+        finishClipboardSession()
+    }
+    private func configureMonitor() {
+        monitor?.stop(); monitor = nil
+        guard !quitAfterClipboardRestore else { return }
+        let next = DictationPasteMonitor(targetPID: {
+            let app = NSWorkspace.shared.frontmostApplication
+            return app?.bundleIdentifier == "com.apple.ScreenSharing" ? app?.processIdentifier : nil
+        }, isAvailable: { [weak self] in self?.canAcceptPaste ?? false },
+        sources: settings.sources,
+        onCaptured: { [weak self] id in
+            guard let self, let monitor = self.monitor else { return }
+            self.startPaste(id, monitor: monitor)
+        }, onError: { [weak self] error in
+            self?.lastError = String(describing: error)
+            self?.setStatus("Error: \(error)")
+            self?.appendLog("capture error=\(error)")
+        }, report: { [weak self] in self?.appendLog("capture \($0)") })
+        do { try next.start(); monitor = next }
+        catch { lastError = String(describing: error); setStatus("Error: \(error)"); appendLog("monitor start error=\(error)") }
+    }
+    private func startPaste(_ id: UUID, monitor: DictationPasteMonitor) {
+        guard canAcceptPaste else { monitor.discard(id); return }
+        let generation = operationGeneration
+        lastError = nil; contextCancelled = false
+        setStatus("Captured: waiting for clipboard release")
+        runningTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                monitor.discard(id)
+                if generation == self.operationGeneration { self.finishClipboardSession(); self.runningTask = nil }
+            }
+            do {
+                guard let target = NSWorkspace.shared.frontmostApplication,
+                      target.bundleIdentifier == "com.apple.ScreenSharing" else { throw DictationCaptureError.targetChanged }
+                let window = try ScreenSharingClipboardMenu.captureWindow(target: target)
+                let captured = try await monitor.waitForRelease(id)
+                try Task.checkCancellation()
+                guard generation == self.operationGeneration,
+                      captured.targetPID == target.processIdentifier else { throw CancellationError() }
+                let session = try self.clipboardRestoration.begin(observedOriginal: captured.original.snapshot,
+                    capturedRevision: captured.original.revision)
+                self.clipboardSession = session
+                try await self.replay(captured, session: session, target: target, window: window,
+                    validateInput: { try monitor.validate(id) })
+            } catch is CancellationError { self.appendLog("operation cancelled") }
+            catch DictationCaptureError.targetChanged { self.cancelForContextChange() }
+            catch DictationCaptureError.inputChanged { self.cancelForContextChange() }
+            catch ScreenSharingClipboardMenuError.targetChanged { self.cancelForContextChange() }
+            catch ExplicitPasteShortcutError.targetChanged { self.cancelForContextChange() }
+            catch {
+                self.lastError = String(describing: error)
+                self.setStatus("Error: \(error)"); self.appendLog("operation error=\(error)")
+            }
+        }
+    }
+    private func cancelForContextChange() {
+        contextCancelled = true; lastError = nil
+        setStatus("Idle"); appendLog("context changed; no retry or deferred paste")
+    }
+    private func replay(_ captured: DictationPasteMonitor.Result, session: LocalClipboardRestoration.Session,
+                        target: NSRunningApplication, window: AXUIElement, validateInput: () throws -> Void) async throws {
+        let payload = captured.payload
+        try validateInput()
+        let baseline = try clipboardRestoration.captureReplayBaseline(releasedRevision: captured.releasedRevision, session: session)
+        let input = ExplicitPasteShortcut(isolatedSoftwareCommand: true,
+            interceptedPaste: captured.intercepted,
+            report: { [weak self] in self?.appendLog("input \($0)") })
+        _ = try await input.waitUntilReady(targetPID: target.processIdentifier, validateTarget: {
+            try validateInput(); try ScreenSharingClipboardMenu.validateWindow(target: target, expected: window)
+        })
+        try Task.checkCancellation(); try validateInput()
+        let driver = try ScreenSharingClipboardMenu(target: target, transcript: payload.text,
+            expectedWindow: window, input: input, writeTranscript: { [clipboardRestoration] _ in
+                try clipboardRestoration.writeCapturedSnapshot(payload.snapshot, text: payload.text, session: session, replacing: baseline)
+            }, trace: { [weak self] in self?.appendLog("clipboard menu \($0)") })
+        sharedClipboardLease = try ExplicitClipboardTransfer().begin(using: driver)
+        sharedClipboardDriver = driver; completionPastePosted = false; contextCancelled = false
+        let paste = GuardedPaste().run(targetPID: target.processIdentifier, shortcut: input,
+            validateBeforeInput: { try validateInput(); try driver.validateTargetAndClipboard() })
+        completionPastePosted = paste.didRun
+        appendLog("input posted=\(paste.didRun) backspace=false intercepted=\(captured.intercepted)")
+        if paste.didRun { clipboardRestoration.recordPastePosted(session) }
+        else { lastError = paste.detail }
+        setStatus(paste.didRun ? "Finishing: restoring clipboard" : "Error: input failed; restoring clipboard")
+    }
+    @objc private func openSettings() {
+        guard !busy else { setStatus("Wait for the current transfer before changing settings"); return }
+        if settingsWindowController == nil {
+            settingsWindowController = SettingsWindowController(settings: settings, onSave: { [weak self] in self?.saveSettings($0) })
+        }
+        settingsWindowController?.settings = settings
+        settingsWindowController?.showWindow(nil); NSApp.activate(ignoringOtherApps: true)
+    }
+    private func saveSettings(_ updated: AppSettings) {
+        do {
+            try settingsStore.save(updated); settings = updated; lastError = nil
+            configureMonitor(); if lastError == nil { setStatus("Idle") }
+        } catch { lastError = "Settings save failed"; setStatus("Error: settings save failed") }
+    }
+    @objc private func checkInputPermissions() {
+        guard !busy else { return }
+        guard AccessibilityPermission.isTrusted(prompt: true) else { setStatus("Error: enable Accessibility for Remote Dictate Helper"); return }
+        lastError = nil; configureMonitor()
+        if lastError == nil { setStatus("Input permission OK") }
+    }
+    private func setStatus(_ message: String) {
+        statusMenuItem.title = message.count > 80 ? String(message.prefix(77)) + "…" : message
+        let suffix: String
+        if sharingCompletion.hasPendingCompletion { suffix = "Wait" }
+        else if clipboardRestoration.hasPendingRestore || sharedClipboardLease != nil { suffix = "Restore" }
+        else if message.hasPrefix("Error") { suffix = "Error" }
+        else if message.hasPrefix("Done") { suffix = "Done" }
+        else if message.hasPrefix("Captured") { suffix = "…" }
+        else { suffix = "" }
+        statusItem.button?.title = ""
+        statusItem.button?.image = BrandIcon.menuImage(attention: suffix == "Error" || suffix == "Wait")
+        statusItem.button?.toolTip = "Remote Dictate Helper — \(message)"
+        statusItem.button?.setAccessibilityLabel("Remote Dictate Helper — \(message)")
+    }
+    private static func defaultSettingsURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/RemoteDictateHelper/settings.json")
+    }
+    private static func defaultLogURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/RemoteDictateHelper/menu-bar.log")
+    }
+
+    private func finishClipboardSession() {
+        guard let session = clipboardSession else { return }
+        clipboardSession = nil
+        clipboardRestoration.finish(session)
+    }
+
+    private func restoreSharedClipboardAfterLocalCompletion(receipt: LocalClipboardRestoration.Receipt? = nil) {
+        guard let lease = sharedClipboardLease, let driver = sharedClipboardDriver,
+              !sharingCompletion.hasPendingCompletion else { return }
+        do {
+            try sharingCompletion.start(
+                probe: { try driver.restorationReadiness() },
+                complete: {
+                    let validate = receipt.map { receipt in { try receipt.validate() } }
+                    try lease.restoreSharing(sendingRestoredClipboard: validate)
+                },
+                onWaiting: { [weak self] readiness in
+                    self?.setStatus(readiness == .waitingForTarget
+                        ? "Return to Screen Sharing to finish clipboard restore"
+                        : "Waiting for Screen Sharing clipboard menu")
+                    self?.appendLog("shared clipboard completion waiting readiness=\(readiness)")
+                },
+                onFinished: { [weak self] result in
+                    self?.finishSharedClipboardCompletion(result, receipt: receipt)
+                }
+            )
+        } catch {
+            finishSharedClipboardCompletion(.failure(error), receipt: receipt)
+        }
+    }
+
+    private func finishSharedClipboardCompletion(_ result: Result<Void, Error>, receipt: LocalClipboardRestoration.Receipt?) {
+        // The poller has stopped and the single completion attempt has ended.
+        // Release busy only now; a new operation must not replace the receipt.
+        sharedClipboardLease = nil
+        sharedClipboardDriver = nil
+        switch result {
+        case .success:
+            appendLog("shared clipboard restored after local clipboard completion; restoredSnapshotSent=\(receipt != nil); remote completion unverified")
+            if contextCancelled, lastError == nil {
+                setStatus("Idle")
+            } else if completionPastePosted, receipt != nil, lastError == nil {
+                setStatus("Done: original clipboard restored; sharing enabled")
+            } else if receipt == nil, lastError == nil {
+                setStatus("Clipboard changed; sharing enabled")
+            } else {
+                setStatus("Error: operation incomplete; sharing enabled")
+            }
+        case let .failure(error):
+            let sharingRestored: Bool
+            if case ExplicitClipboardTransferError.restoredClipboardSendFailed = error {
+                sharingRestored = true
+            } else {
+                sharingRestored = false
+            }
+            lastError = String(describing: error)
+            setStatus(sharingRestored ? "Error: sharing restored; original clipboard sync failed" : "Error: enable Use Shared Clipboard for the original connection")
+            appendLog("shared clipboard restore error=\(error)")
+        }
+        if let receipt { clipboardRestoration.observeSharingCompletion(receipt) }
+        if case .success = result {
+            completePendingQuit(success: true)
+        } else {
+            completePendingQuit(success: false)
+        }
+    }
+
+    private func completePendingQuit(success: Bool) {
+        guard quitAfterClipboardRestore else { return }
+        quitAfterClipboardRestore = false
+        // Keep the app/error visible if preference recovery could not finish.
+        NSApplication.shared.reply(toApplicationShouldTerminate: success)
+
+    }
+
+    private func appendLog(_ message: String) {
+        try? log.append(message)
+    }
+}
+
+@main
+enum RemoteDictateEntry {
+    @MainActor static func main() {
+        let application = NSApplication.shared
+        let controller = RemoteDictateApp()
+        application.setActivationPolicy(.accessory)
+        application.delegate = controller
+        withExtendedLifetime(controller) { application.run() }
+    }
+}

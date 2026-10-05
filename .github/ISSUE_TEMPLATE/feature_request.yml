@@ -1,0 +1,15 @@
+name: Feature request
+description: Propose a focused improvement.
+body:
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: What would this help you do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal and evidence
+      description: For another app or remote desktop client, explain its paste protocol and any physical tests.

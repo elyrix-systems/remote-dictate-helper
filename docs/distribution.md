@@ -29,9 +29,11 @@ named certificate is an error.
 For the 0.8.0 tooling replacement, local checks cover a real ad-hoc build and
 DMG verification, installation guards/rollback with disposable app fixtures,
 and OpenSSL certificate/export generation and cleanup. Keychain import/trust
-was simulated in that spike. The new local identity still needs a real setup
-and permission-grant check on the installing Mac; these component checks do not
-establish production signing or remote paste compatibility.
+was simulated in that spike. The new local signing identity still needs a real
+setup check. Separately, the installed ad-hoc preview passed physical dictation
+checks on the user's Mac and retained Accessibility after a normal relaunch;
+see the [acceptance record](behavior-baseline.md#installed-preview-080).
+This does not establish production signing or universal remote compatibility.
 
 ## Trust model
 

@@ -27,3 +27,32 @@ An earlier timeout did not recur, but its root cause remains unconfirmed.
 No clipboard contents are included here. These trials do not establish universal
 compatibility across keyboards, dictation apps, remote fields or rich-text formats.
 Use the [test plan](test-plan.md) for changes and broader integration checks.
+
+## Installed preview: 0.8.0
+
+On 2026-10-05, the GitHub-built ad-hoc preview **0.8.0 / build 1** was installed
+on an Apple silicon Mac running **macOS 26.6.2**, replacing 0.7.1. The previous
+bundle and settings were backed up locally; the saved source selection remained
+unchanged after installation and relaunch.
+
+The user confirmed these physical checks:
+
+| Check | Result |
+| --- | --- |
+| Ordinary local copy and manual remote paste | The marker arrived exactly once. |
+| Flow toggle recording, switching away and returning before stopping | One remote insertion; prefix intact; no leading `v`; original local clipboard marker restored. |
+| Superwhisper left Option push-to-talk into remote Codex | One remote insertion; prefix intact; no leading `v`; original local clipboard marker restored. |
+| Valis with its configured recording shortcut | One remote insertion; prefix intact; no leading `v`; original local clipboard marker restored. |
+
+The Flow trial's local metadata independently recorded interception, a single
+paste without Backspace and successful clipboard restoration. Remote receipt
+and the named source-app scenarios are established by the user's report.
+After an ordinary Quit and relaunch, a new helper process installed the active
+paste filter without an Accessibility error. Setup completion and saved settings
+were retained.
+
+This validates the installed preview and the reported scenarios on this Mac.
+It does not establish a clean browser-download/Gatekeeper experience on a new
+account, creation of the new local signing certificate, Developer ID signing or
+Apple notarization. Those distribution checks remain separate. No real dictated
+text, clipboard payloads or machine-specific paths are included in this record.

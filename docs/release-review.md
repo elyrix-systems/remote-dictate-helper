@@ -50,9 +50,12 @@ the owner's review of the contents. Scanner results do not replace that review.
 - Future Developer ID signing and notarization are prepared but still require a
   company Apple Developer membership, credentials and a real signed-release test.
 
-The owner has accepted the revised settings/setup layout. Native tests and local
-bundle/DMG checks do not prove a clean browser-download installation. That final
-check, fresh Accessibility approval and actual remote dictation should follow the
+The owner has accepted the revised settings/setup layout. The installed 0.8.0
+preview passed user-confirmed checks with Flow, superwhisper and Valis, including
+clipboard preservation; Accessibility remained usable after normal Quit/relaunch.
+See the [physical acceptance record](behavior-baseline.md#installed-preview-080).
+These checks do not prove a clean browser-download installation on a new account.
+That remaining check should follow the
 [physical release checklist](distribution.md#physical-release-checklist).
 
 ## Before a later public launch

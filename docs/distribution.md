@@ -124,7 +124,10 @@ limits. [GitHub billing](https://docs.github.com/en/billing/concepts/product-bil
 - PR jobs have no secrets, release environment or write-token build steps.
 - Keep bounded job timeouts, cancel superseded PR runs and short artifact retention.
 - Protect `main`: require CI, review and resolved discussions; prohibit force-push
-  and deletion. The primary maintainer has an explicit administration bypass.
+  and deletion. Only `@pradaev` may update or merge into `main`; teams and apps have
+  no push allowance. Protection applies to administrators too. Only `@pradaev`
+  may bypass the PR-review requirement for their own maintenance changes; CI
+  remains required.
 - Review shell scripts, workflows and dependencies before approving external jobs.
 
 There is no `pull_request_target` build, self-hosted runner or secret-bearing

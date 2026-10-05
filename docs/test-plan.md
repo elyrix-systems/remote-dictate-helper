@@ -20,6 +20,7 @@ The custom native runner works with Command Line Tools without XCTest.
 | Input | Exactly one private Command+V; permission/target/modifier refusal; mid-sequence release; HID residue guards and no retry. |
 | Completion | Deferred cleanup readiness, single completion attempt, busy refusal and errors. |
 | Transfer | Clipboard menu order, exact setting transitions, failure recovery, original Send before sharing-on and receipt validation. |
+| Core compatibility | Existing 1.0 library calls and conformers still compile, including fixed-clipboard validation and default preparation. |
 
 GitHub Actions runs the native suite and bundle build on a standard macOS 26 Apple silicon runner,
 plus privacy and secret checks. It does not install or launch the helper. A green

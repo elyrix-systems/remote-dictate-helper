@@ -28,7 +28,6 @@ final class DictationPasteMonitor {
         let original: ClipboardBaselineHistory.Entry
         let releasedRevision: Int
         let targetPID: pid_t
-        let intercepted: Bool
     }
     private struct Pending {
         let id: UUID
@@ -37,7 +36,6 @@ final class DictationPasteMonitor {
         let sourcePID: pid_t
         let targetPID: pid_t
         let started: TimeInterval
-        let intercepted: Bool
         let clipboardReturn: ClipboardReturnPolicy
         let inputSequence: UInt64?
         var lastReportedRevision: Int
@@ -167,16 +165,15 @@ final class DictationPasteMonitor {
             // Keep the active callback short. There is no menu/AX work or input
             // posting here. Failure leaves the original paste unmodified.
             if now() - started > 0.1 { throw DictationCaptureError.captureTooSlow }
-            let intercepted = true
             let id = UUID()
             pending = Pending(id: id, payload: payload, candidates: candidates, sourcePID: event.pid,
-                targetPID: target, started: started, intercepted: intercepted, clipboardReturn: event.clipboardReturn,
+                targetPID: target, started: started, clipboardReturn: event.clipboardReturn,
                 inputSequence: event.sequence, lastReportedRevision: payload.revision)
-            if intercepted { suppressedPID = event.pid; suppressedAt = now() }
+            suppressedPID = event.pid; suppressedAt = now()
             history.clear()
-            report("captured revision=\(payload.revision) characters=\(payload.text.count) intercepted=\(intercepted) encodingMarkerAdded=\(payload.encodingMarkerAdded) returnPolicy=\(event.clipboardReturn.rawValue)")
+            report("captured revision=\(payload.revision) characters=\(payload.text.count) intercepted=true encodingMarkerAdded=\(payload.encodingMarkerAdded) returnPolicy=\(event.clipboardReturn.rawValue)")
             onCaptured(id)
-            return intercepted
+            return true
         } catch { history.clear(); onError(error) }
         return remove
     }
@@ -204,7 +201,7 @@ final class DictationPasteMonitor {
             if let original {
                 report("released afterMs=\(Int((now() - current.started) * 1000)) revision=\(revision) originalRevision=\(original.revision)")
                 return Result(payload: current.payload, original: original, releasedRevision: revision,
-                    targetPID: current.targetPID, intercepted: current.intercepted)
+                    targetPID: current.targetPID)
             }
         }
         guard now() - current.started < 5 else {

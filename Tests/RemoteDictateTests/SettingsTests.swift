@@ -23,13 +23,18 @@ final class SettingsTests {
         expectTrue(try JSONDecoder().decode(AppSettings.self, from: Data(#"{"sources":[]}"#.utf8)).sources.isEmpty)
     }
     func testSourceScope() {
-        let settings = AppSettings()
-        for bundle in ["com.electron.wispr-flow", "com.electron.wispr-flow.helper", "com.superduper.superwhisper", "so.valis.desktop"] {
-            expectNotNil(settings.source(for: bundle))
+        let sources = AppSettings().sources
+        expectEqual(sources.map(\.bundleIdentifier), ["com.electron.wispr-flow", "com.superduper.superwhisper", "so.valis.desktop"])
+        for source in sources {
+            expectTrue(source.matches(source.bundleIdentifier))
+            expectTrue(source.matches(source.bundleIdentifier + ".helper"))
+            for other in [source.bundleIdentifier + "-other", "com.apple.ScreenSharing", "systems.elyrix.RemoteDictateHelper", ""] {
+                expectFalse(source.matches(other))
+            }
+            expectFalse(source.matches(nil))
+            var disabled = source; disabled.enabled = false
+            expectFalse(disabled.matches(source.bundleIdentifier))
         }
-        for other in ["com.electron.wispr-flow-other", "com.apple.ScreenSharing", "systems.elyrix.RemoteDictateHelper", ""] {
-            expectNil(settings.source(for: other))
-        }
-        expectNil(settings.source(for: nil))
+        expectFalse(DictationSource(bundleIdentifier: "", name: "Empty").matches(""))
     }
 }

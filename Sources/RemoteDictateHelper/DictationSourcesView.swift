@@ -7,7 +7,6 @@ import RemoteDictateCore
 @MainActor
 final class DictationSourcesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     var sources: [DictationSource] { didSet { table.reloadData(); updateRemove() } }
-    var onChange: (([DictationSource]) -> Void)?
     private let table = NSTableView()
     private let remove = NSButton(title: "Remove", target: nil, action: nil)
     init(sources: [DictationSource]) {
@@ -85,7 +84,6 @@ final class DictationSourcesView: NSView, NSTableViewDataSource, NSTableViewDele
                 ?? bundle.object(forInfoDictionaryKey: "CFBundleName") as? String ?? url.deletingPathExtension().lastPathComponent
             sources.append(DictationSource(bundleIdentifier: identifier, name: name))
         }
-        table.reloadData(); onChange?(sources)
         if let row = sources.firstIndex(where: { $0.bundleIdentifier == identifier }) {
             table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         }
@@ -93,6 +91,6 @@ final class DictationSourcesView: NSView, NSTableViewDataSource, NSTableViewDele
     }
     @objc private func removeApp() {
         guard sources.indices.contains(table.selectedRow) else { return }
-        sources.remove(at: table.selectedRow); table.reloadData(); updateRemove(); onChange?(sources)
+        sources.remove(at: table.selectedRow)
     }
 }

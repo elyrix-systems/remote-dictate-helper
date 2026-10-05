@@ -1,5 +1,35 @@
 import RemoteDictateCore
 
+/// A 1.0 client conformer that relies on the default clipboard preparation.
+private struct LegacyTransferDriver: ExplicitClipboardTransferDriver {
+    let probe: TransferProbe
+    func readState() throws -> SharedClipboardMenuState { try probe.readState() }
+    func validateTargetAndClipboard() throws { try probe.validateTargetAndClipboard() }
+    func setSharedClipboardEnabled(_ enabled: Bool) throws { try probe.setSharedClipboardEnabled(enabled) }
+    func sendClipboard() throws { try probe.sendClipboard() }
+    func sendRestoredClipboard(validating validate: () throws -> Void) throws {
+        try probe.sendRestoredClipboard(validating: validate)
+    }
+}
+
+func testLegacyCoreCompatibility() throws {
+    var settings = AppSettings()
+    settings.settingsSchemaVersion = 3
+    expectEqual(settings.settingsSchemaVersion, 3)
+    expectNotNil(settings.source(for: "com.electron.wispr-flow.helper"))
+    expectNil(settings.source(for: "com.electron.wispr-flow-other"))
+    expectEqual(ClipboardReturnPolicy.allCases, [.restoresPrevious, .keepsTranscript])
+    expectEqual(ClipboardReturnPolicy.restoresPrevious.title, "App restores the previous clipboard")
+    expectEqual(ClipboardReturnPolicy.keepsTranscript.title, "App leaves the dictated text in the clipboard")
+    let driver = TransferProbe()
+    try ExplicitClipboardTransfer().run(using: LegacyTransferDriver(probe: driver))
+    expectEqual(driver.actions, ["off", "send", "on"])
+    let changed = TransferProbe(.clipboardChangedAfterRestore)
+    expectThrows(try ExplicitClipboardTransfer().run(using: LegacyTransferDriver(probe: changed)),
+                 "The legacy entry point retains post-restoration validation")
+    expectEqual(changed.actions, ["off", "send", "on"])
+}
+
 private enum TransferProbeError: Error { case injectedFailure, invariant(String) }
 
 private final class TransferProbe: ExplicitClipboardTransferDriver {
@@ -65,8 +95,11 @@ func testExplicitClipboardTransferRecovery() throws {
     for fault in TransferProbe.Fault.allCases {
         let driver = TransferProbe(fault)
         var failure: Error?
-        do { try transaction.run(using: driver) } catch { failure = error }
-        try check((failure == nil) == (fault == .none), "Unexpected completion for \(fault)")
+        do {
+            let lease = try transaction.begin(using: driver)
+            try lease.restoreSharing()
+        } catch { failure = error }
+        try check((failure == nil) == [.none, .clipboardChangedAfterRestore].contains(fault), "Unexpected completion for \(fault)")
         try check(driver.actions.filter { $0 == "send" }.count <= 1, "Never retry Send Clipboard")
         if fault == .restore {
             guard let transferError = failure as? ExplicitClipboardTransferError,
@@ -97,14 +130,15 @@ func testExplicitClipboardTransferRecovery() throws {
     let initiallyOff = TransferProbe()
     initiallyOff.enabled = false
     do {
-        try transaction.run(using: initiallyOff)
+        _ = try transaction.begin(using: initiallyOff)
         throw TransferProbeError.invariant("Initially disabled sharing must be rejected")
     } catch ExplicitClipboardTransferError.sharedClipboardInitiallyOff {}
     try check(initiallyOff.actions.isEmpty && !initiallyOff.enabled, "Preserve user's initial off setting")
 
     let preparedSend = TransferProbe()
     preparedSend.sendRequiresPreparation = true
-    try transaction.run(using: preparedSend)
+    let preparedLease = try transaction.begin(using: preparedSend)
+    try preparedLease.restoreSharing()
     try check(preparedSend.actions == ["off", "prepare", "send", "on"], "Check Send availability after preparing text")
 
     // The automatic path keeps sharing off until its caller finishes restoring

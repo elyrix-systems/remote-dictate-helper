@@ -31,7 +31,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         if outcome == .failed { self.lastError = "Local clipboard restoration failed"; self.setStatus("Error: clipboard restore failed") }
         self.restoreSharedClipboardAfterLocalCompletion(receipt: receipt)
         if self.sharedClipboardLease == nil { self.completePendingQuit(success: outcome != .failed) }
-    }, onMetadata: { [weak self] in self?.appendLog("local clipboard metadata \($0)") })
+    })
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Also recognize an earlier installation of this product whose bundle
@@ -145,8 +145,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
                 try Task.checkCancellation()
                 guard generation == self.operationGeneration,
                       captured.targetPID == target.processIdentifier else { throw CancellationError() }
-                let session = try self.clipboardRestoration.begin(observedOriginal: captured.original.snapshot,
-                    capturedRevision: captured.original.revision)
+                let session = try self.clipboardRestoration.begin(observedOriginal: captured.original.snapshot)
                 self.clipboardSession = session
                 try await self.replay(captured, session: session, target: target, window: window,
                     validateInput: { try monitor.validate(id) })
@@ -171,7 +170,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         try validateInput()
         let baseline = try clipboardRestoration.captureReplayBaseline(releasedRevision: captured.releasedRevision, session: session)
         let input = ExplicitPasteShortcut(isolatedSoftwareCommand: true,
-            interceptedPaste: captured.intercepted,
+            interceptedPaste: true,
             report: { [weak self] in self?.appendLog("input \($0)") })
         _ = try await input.waitUntilReady(targetPID: target.processIdentifier, validateTarget: {
             try validateInput(); try ScreenSharingClipboardMenu.validateWindow(target: target, expected: window)
@@ -186,7 +185,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         let paste = GuardedPaste().run(targetPID: target.processIdentifier, shortcut: input,
             validateBeforeInput: { try validateInput(); try driver.validateTargetAndClipboard() })
         completionPastePosted = paste.didRun
-        appendLog("input posted=\(paste.didRun) backspace=false intercepted=\(captured.intercepted)")
+        appendLog("input posted=\(paste.didRun) backspace=false intercepted=true")
         if paste.didRun { clipboardRestoration.recordPastePosted(session) }
         else { lastError = paste.detail }
         setStatus(paste.didRun ? "Finishing: restoring clipboard" : "Error: input failed; restoring clipboard")
@@ -222,15 +221,12 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     }
     private func setStatus(_ message: String) {
         statusMenuItem.title = message.count > 80 ? String(message.prefix(77)) + "…" : message
-        let suffix: String
-        if sharingCompletion.hasPendingCompletion { suffix = "Wait" }
-        else if clipboardRestoration.hasPendingRestore || sharedClipboardLease != nil { suffix = "Restore" }
-        else if message.hasPrefix("Error") { suffix = "Error" }
-        else if message.hasPrefix("Done") { suffix = "Done" }
-        else if message.hasPrefix("Captured") { suffix = "…" }
-        else { suffix = "" }
+        let attention: Bool
+        if sharingCompletion.hasPendingCompletion { attention = true }
+        else if clipboardRestoration.hasPendingRestore || sharedClipboardLease != nil { attention = false }
+        else { attention = message.hasPrefix("Error") }
         statusItem.button?.title = ""
-        statusItem.button?.image = BrandIcon.menuImage(attention: suffix == "Error" || suffix == "Wait")
+        statusItem.button?.image = BrandIcon.menuImage(attention: attention)
         statusItem.button?.toolTip = "Remote Dictate Helper — \(message)"
         statusItem.button?.setAccessibilityLabel("Remote Dictate Helper — \(message)")
     }
@@ -300,7 +296,6 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
             setStatus(sharingRestored ? "Error: sharing restored; original clipboard sync failed" : "Error: enable Use Shared Clipboard for the original connection")
             appendLog("shared clipboard restore error=\(error)")
         }
-        if let receipt { clipboardRestoration.observeSharingCompletion(receipt) }
         if case .success = result {
             completePendingQuit(success: true)
         } else {

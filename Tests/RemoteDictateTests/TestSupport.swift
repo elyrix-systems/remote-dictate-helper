@@ -49,6 +49,7 @@ struct TestRunner {
         try CompletionTests().testDeferredCompletion()
         try await InputTests().testNativeInput()
         try testExplicitClipboardTransferRecovery()
+        try testLegacyCoreCompatibility()
         print("All tests passed. Named clipboards and mocked input only; no app control or real keystrokes.")
     }
 }

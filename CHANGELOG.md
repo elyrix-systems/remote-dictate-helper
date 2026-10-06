@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Recognize an empty local clipboard when the dictation app returns it as a
+  single empty UTF-8 text item. This fixes an original-clipboard mismatch
+  observed with Flow after sleep; the saved clipboard is still restored exactly.
+  Keep refusal of unknown content and the deadline for missing source release.
+
 ## 1.0.1 — 2026-10-05
 
 - Add **Product Website** to the menu bar menu, opening the Remote Dictate Helper

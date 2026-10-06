@@ -38,7 +38,10 @@ or key press before replay.
 
 For `restoresPrevious` sources, V-up and a new clipboard revision matching a saved
 original establish release. Unknown values stop replay; the five-second limit is
-a failure deadline, not a fixed wait. `keepsTranscript` is an explicit advanced
+a failure deadline, not a fixed wait. A latest original with zero items may also
+return as exactly one zero-byte UTF-8 plain-text item; restoration still uses the
+saved zero-item original. Whitespace, other formats and older empty snapshots
+do not qualify for this equivalence. `keepsTranscript` is an explicit advanced
 source contract that permits the preceding snapshot after V-up. There is no
 heuristic fallback between these protocols.
 
@@ -53,6 +56,7 @@ consumption. Revision checks, including equal-text copies, protect newer content
 | An active event tap can suppress an event | Apple's Core Graphics callback contract | External API proof only |
 | Filtering the source paste prevents the leaked `v` | Physical trials with Flow, superwhisper and Valis | Tested local Mac and Screen Sharing setup |
 | Source clipboard return can identify the original | Snapshot/revision regression tests and physical clipboard checks | Component + local integration proof |
+| A zero-item original may return as one empty UTF-8 text item | Local Flow/pasteboard metadata after wake and a named-pasteboard reproduction | Observed source behavior; automated capture/replay/restoration proof, pending physical verification of the fix |
 | HID-only generic Command residue can be handled safely | Read-only flag/key-state measurements, refusal tests and successful superwhisper Option push-to-talk into remote Codex | The observed state, not all keyboards or sources |
 
 The HID compatibility case requires a private event source, an intercepted paste,

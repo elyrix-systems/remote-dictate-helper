@@ -121,3 +121,12 @@ normal Quit, replacement and launch, the new process immediately installed its
 active paste filter without another permission grant. This establishes local
 update continuity on this Mac. It does not validate Developer ID distribution,
 certificate creation, ad-hoc update continuity or a clean-account download.
+
+## Release acceptance: 1.0.3
+
+On 2026-10-06, the owner reported that the installed candidate worked correctly
+and authorized merging and releasing it. This follows the Settings autosave,
+native alert dismissal and certificate-signed update checks above. The candidate
+still displayed 1.0.2; the 1.0.3 release preparation changes the version metadata
+and release notes without changing its runtime code. This acceptance concerns
+the local candidate, not a browser-downloaded ad-hoc DMG on a clean account.

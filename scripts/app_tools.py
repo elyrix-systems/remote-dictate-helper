@@ -32,7 +32,17 @@ def invoke(arguments, *, capture=False, environment=None):
 
 
 def selected_identity():
-    return os.environ.get("REMOTE_DICTATE_CODESIGN_IDENTITY", LOCAL_IDENTITY)
+    if "REMOTE_DICTATE_CODESIGN_IDENTITY" in os.environ:
+        return os.environ["REMOTE_DICTATE_CODESIGN_IDENTITY"]
+    # A maintainer can retain an existing local certificate across rebuilds.
+    # This private checkout preference is never packaged or committed.
+    preference = ROOT / ".local-audit/signing-identity.txt"
+    if preference.exists():
+        identity = preference.read_text(encoding="utf-8").strip()
+        if not identity or identity == "-" or "\n" in identity:
+            raise ToolError("Local signing preference must name one certificate; select ad-hoc signing explicitly in the environment.")
+        return identity
+    return LOCAL_IDENTITY
 
 
 def identity_hash(name):

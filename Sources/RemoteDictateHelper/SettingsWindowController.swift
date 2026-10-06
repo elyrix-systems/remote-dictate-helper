@@ -121,7 +121,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
     private func refreshPermission() {
         loginStatus.stringValue = launchAtLogin.statusDescription
-        let trusted = AccessibilityPermission.isTrusted(prompt: false)
+        let trusted = AccessibilityPermission.isTrusted()
         if trusted && !previousTrust { inputReady = onPermissionGranted() }
         if !trusted { inputReady = false }
         previousTrust = trusted
@@ -135,10 +135,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
     @objc private func requestPermission() {
         guard installed else { return }
-        _ = AccessibilityPermission.isTrusted(prompt: true)
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
-        }
+        AccessibilityPermission.openSettings()
         refreshPermission()
     }
     @objc private func openLoginItems() { launchAtLogin.openSystemSettings() }

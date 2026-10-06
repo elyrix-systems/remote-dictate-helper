@@ -41,7 +41,7 @@ final class ExplicitPasteShortcut {
     init(
         isolatedSoftwareCommand: Bool = false,
         interceptedPaste: Bool = false,
-        isTrusted: @escaping () -> Bool = { AccessibilityPermission.isTrusted(prompt: false) },
+        isTrusted: @escaping () -> Bool = { AccessibilityPermission.isTrusted() },
         targetIsFrontmost: @escaping (pid_t) -> Bool = { pid in
             let app = NSWorkspace.shared.frontmostApplication
             return pid > 0 && app?.processIdentifier == pid && app?.bundleIdentifier == "com.apple.ScreenSharing"

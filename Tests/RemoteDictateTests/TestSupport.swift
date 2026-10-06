@@ -30,6 +30,7 @@ struct TestRunner {
     @MainActor static func main() async throws {
         testCaptureDecisionDeadline()
         testSettingsReadiness()
+        testAccessibilitySettingsNavigation()
         try testLaunchAtLogin()
         try testOperationalLog()
         try testSettingsPersistence()

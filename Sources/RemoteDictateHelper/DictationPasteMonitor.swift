@@ -74,7 +74,7 @@ final class DictationPasteMonitor {
     }
 
     func start() throws {
-        guard AccessibilityPermission.isTrusted(prompt: false) else { throw DictationCaptureError.unavailable }
+        guard AccessibilityPermission.isTrusted() else { throw DictationCaptureError.unavailable }
         filterHealthy = true
         let next = PasteEventFilter(sources: sources, onEvent: { [weak self] input, decision in
             Task { @MainActor in

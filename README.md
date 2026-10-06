@@ -169,8 +169,12 @@ insertion or simulated character typing is a different protocol.
   then reopen it. The default is `restoresPrevious`; this is an explicit app
   contract, not a delay setting.
 - **Permission disappears after rebuilding:** use the same local signing
-  identity. If needed, remove the stale Accessibility entry and add the installed
-  app again. No System Events Automation permission is required by this version.
+  identity; see [local signing](docs/distribution.md#installation-paths). Ad-hoc
+  updates change code identity: an enabled old entry can remain while the new
+  app shows Not granted. Remove that old entry with **−**, then click the
+  helper's **Open Accessibility Settings…** and allow the installed copy again.
+  Switching from ad-hoc to certificate signing also needs a fresh grant once.
+  No System Events Automation permission is required by this version.
 
 Settings: `~/Library/Application Support/RemoteDictateHelper/settings.json`.
 Operational log: `~/Library/Logs/RemoteDictateHelper/menu-bar.log`. The log contains

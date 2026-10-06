@@ -7,6 +7,11 @@
   the window keeps saved changes; a failed edit leaves the previous list intact.
 - Complete first-use setup automatically when permissions and the app list are
   ready, without requiring a Save button.
+- Avoid opening System Settings twice when requesting Accessibility. Let the
+  native permission alert handle navigation; open the pane directly only when
+  access is already granted.
+- Allow a private checkout preference for an existing local signing certificate,
+  so local installations can retain their code identity across rebuilds.
 
 ## 1.0.2 — 2026-10-06
 

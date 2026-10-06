@@ -34,6 +34,23 @@ Build customization uses `REMOTE_DICTATE_*` environment variables. Select `-`
 explicitly as `REMOTE_DICTATE_CODESIGN_IDENTITY` for ad-hoc builds; an unavailable
 named certificate is an error.
 
+To reuse a differently named certificate for local installs, save its exact name
+on one line in `.local-audit/signing-identity.txt` in the checkout. This ignored
+preference contains only the certificate name, never a private key. An explicit
+`REMOTE_DICTATE_CODESIGN_IDENTITY` overrides it; CI and DMG packaging explicitly
+select their own signing mode. Missing certificates fail instead of silently
+falling back to ad-hoc signing.
+
+Ad-hoc code identity is tied to the build's code hash. A replaced bundle can
+therefore appear enabled in macOS Accessibility while the new process has no
+access. In that case, remove the old helper entry with **−**, click the helper's
+**Open Accessibility Settings…**, and grant the newly listed installed copy.
+The helper does not clear privacy decisions. Keeping the same certificate and
+bundle identifier avoids changing identity on local rebuilds; the initial move
+from ad-hoc to certificate signing still requires renewed access. Public ad-hoc
+downloads retain this limitation until Developer ID signing is available.
+See Apple's [code identity requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements).
+
 For the 0.8.0 tooling replacement, local checks cover a real ad-hoc build and
 DMG verification, installation guards/rollback with disposable app fixtures,
 and OpenSSL certificate/export generation and cleanup. Keychain import/trust

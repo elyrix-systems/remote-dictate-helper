@@ -104,3 +104,20 @@ compact window was visually checked with no Save/Cancel footer or clipped text.
 Failure/busy rollback and retention of source clipboard policies passed automated
 tests. The paste protocol was unchanged; this UI check is not a new remote-paste
 or clean-account permission test.
+
+## Local Accessibility navigation and signed update
+
+On 2026-10-06, the unreleased candidate was installed with an existing local
+code-signing certificate, replacing an ad-hoc copy. The old Accessibility entry
+was renewed once for that deliberate identity transition. The helper showed
+**Allowed ✓** and installed its active paste filter. The owner confirmed that
+the native **Accessibility Access** alert disappeared after **Open System
+Settings**. The helper now uses only the alert's navigation when untrusted.
+
+A second build changed the executable while keeping the same bundle identifier
+and certificate. The code hashes differed; the designated requirements matched,
+and both builds passed verification against the other's requirement. After a
+normal Quit, replacement and launch, the new process immediately installed its
+active paste filter without another permission grant. This establishes local
+update continuity on this Mac. It does not validate Developer ID distribution,
+certificate creation, ad-hoc update continuity or a clean-account download.

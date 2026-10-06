@@ -62,7 +62,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         appendLog("app launched version=\(version)")
         let loginNeedsAttention = launchAtLogin.registerOnFirstLaunch()
         if loginNeedsAttention || SettingsReadiness.shouldOpenOnLaunch(completed: UserDefaults.standard.bool(forKey: SettingsWindowController.completionKey),
-                                               accessibility: AccessibilityPermission.isTrusted(prompt: false)) {
+                                               accessibility: AccessibilityPermission.isTrusted()) {
             openSettings()
         }
     }
@@ -214,7 +214,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     private func saveSettings(_ updated: AppSettings) throws {
         guard !busy else {
             throw NSError(domain: "RemoteDictateHelper.Settings", code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Wait for the current clipboard transfer to finish, then save again."])
+                userInfo: [NSLocalizedDescriptionKey: "Wait for the current clipboard transfer to finish, then add or remove the app again."])
         }
         do {
             try settingsStore.save(updated); settings = updated; lastError = nil

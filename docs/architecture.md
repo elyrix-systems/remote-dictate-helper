@@ -105,3 +105,17 @@ managed by macOS. First-use completion is recorded once the installed app has
 Accessibility, a ready input monitor and at least one saved source; no Save action
 is required. Tests exercise persistence and rejection with a disposable settings
 file; the native picker and window still require local UI verification.
+
+An explicit Accessibility-button click takes one path: an untrusted process
+requests the native access alert, whose **Open System Settings** action owns
+navigation; a trusted process opens the pane directly. Background trust checks
+never prompt. Apple's request is asynchronous, so opening the pane immediately
+after requesting access can leave the alert over Settings. Injected-effect tests
+protect the mutually exclusive paths; native alert dismissal needs local proof.
+Reference: [AXIsProcessTrustedWithOptions](https://developer.apple.com/documentation/applicationservices/1459186-axisprocesstrustedwithoptions).
+
+Readiness evidence: the API's asynchronous prompt contract and code-signing
+requirements are external proof. Local proof on 2026-10-06 includes owner-confirmed
+alert dismissal and a changed executable retaining Accessibility after replacement
+with the same certificate. Public ad-hoc downloads still have changing identities;
+this is not production Developer ID evidence. See [the local record](behavior-baseline.md#local-accessibility-navigation-and-signed-update).

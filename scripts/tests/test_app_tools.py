@@ -12,6 +12,26 @@ spec.loader.exec_module(tools)
 
 
 class AppToolsTests(unittest.TestCase):
+    def test_local_signing_preference_retains_certificate_and_allows_explicit_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(tools, "ROOT", root), patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(tools.selected_identity(), tools.LOCAL_IDENTITY)
+                preference = root / ".local-audit/signing-identity.txt"
+                preference.parent.mkdir()
+                preference.write_text("Example Local Certificate\n")
+                self.assertEqual(tools.selected_identity(), "Example Local Certificate")
+                with patch.dict(os.environ, {"REMOTE_DICTATE_CODESIGN_IDENTITY": "-"}):
+                    self.assertEqual(tools.selected_identity(), "-")
+                with patch.object(tools, "identity_hash", return_value=None), patch.object(tools, "invoke") as command:
+                    with self.assertRaises(tools.ToolError):
+                        tools.sign(Path("Example.app"), "example.app")
+                    command.assert_not_called()
+                for invalid in ("", "-", "First\nSecond"):
+                    preference.write_text(invalid)
+                    with self.assertRaises(tools.ToolError):
+                        tools.selected_identity()
+
     def test_command_error_does_not_expose_credentials(self):
         result = subprocess.CompletedProcess([], 7, "", "")
         with patch.object(tools.subprocess, "run", return_value=result):

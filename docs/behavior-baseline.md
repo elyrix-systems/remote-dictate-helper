@@ -93,3 +93,40 @@ registration, a never-seen service, approval/failure handling, retained opt-out
 across launches/updates and exclusion of uninstalled copies. No logout or reboot
 was performed to test the new login item, and no physical system opt-out/update
 trial was performed. These remain separate from the observed registration.
+
+## Unreleased Settings autosave check
+
+On 2026-10-06, the locally installed candidate was checked with a disposable app
+entry. Adding it through the native picker wrote the settings file before the
+window closed. Removing it also persisted immediately, restoring the original
+settings exactly. Closing the window did not change the saved selection. The
+compact window was visually checked with no Save/Cancel footer or clipped text.
+Failure/busy rollback and retention of source clipboard policies passed automated
+tests. The paste protocol was unchanged; this UI check is not a new remote-paste
+or clean-account permission test.
+
+## Local Accessibility navigation and signed update
+
+On 2026-10-06, the unreleased candidate was installed with an existing local
+code-signing certificate, replacing an ad-hoc copy. The old Accessibility entry
+was renewed once for that deliberate identity transition. The helper showed
+**Allowed ✓** and installed its active paste filter. The owner confirmed that
+the native **Accessibility Access** alert disappeared after **Open System
+Settings**. The helper now uses only the alert's navigation when untrusted.
+
+A second build changed the executable while keeping the same bundle identifier
+and certificate. The code hashes differed; the designated requirements matched,
+and both builds passed verification against the other's requirement. After a
+normal Quit, replacement and launch, the new process immediately installed its
+active paste filter without another permission grant. This establishes local
+update continuity on this Mac. It does not validate Developer ID distribution,
+certificate creation, ad-hoc update continuity or a clean-account download.
+
+## Release acceptance: 1.0.3
+
+On 2026-10-06, the owner reported that the installed candidate worked correctly
+and authorized merging and releasing it. This follows the Settings autosave,
+native alert dismissal and certificate-signed update checks above. The candidate
+still displayed 1.0.2; the 1.0.3 release preparation changes the version metadata
+and release notes without changing its runtime code. This acceptance concerns
+the local candidate, not a browser-downloaded ad-hoc DMG on a clean account.

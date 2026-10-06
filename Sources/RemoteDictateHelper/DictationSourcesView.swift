@@ -7,10 +7,11 @@ import RemoteDictateCore
 @MainActor
 final class DictationSourcesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     var sources: [DictationSource] { didSet { table.reloadData(); updateRemove() } }
+    private let onChange: ([DictationSource]) throws -> Void
     private let table = NSTableView()
     private let remove = NSButton(title: "Remove", target: nil, action: nil)
-    init(sources: [DictationSource]) {
-        self.sources = sources
+    init(sources: [DictationSource], onChange: @escaping ([DictationSource]) throws -> Void) {
+        self.sources = sources; self.onChange = onChange
         super.init(frame: .zero)
         let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.autohidesScrollers = true
         scroll.borderType = .bezelBorder
@@ -82,7 +83,7 @@ final class DictationSourcesView: NSView, NSTableViewDataSource, NSTableViewDele
         if !sources.contains(where: { $0.bundleIdentifier == identifier }) {
             let name = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
                 ?? bundle.object(forInfoDictionaryKey: "CFBundleName") as? String ?? url.deletingPathExtension().lastPathComponent
-            sources.append(DictationSource(bundleIdentifier: identifier, name: name))
+            guard commit(sources + [DictationSource(bundleIdentifier: identifier, name: name)]) else { return }
         }
         if let row = sources.firstIndex(where: { $0.bundleIdentifier == identifier }) {
             table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
@@ -91,6 +92,22 @@ final class DictationSourcesView: NSView, NSTableViewDataSource, NSTableViewDele
     }
     @objc private func removeApp() {
         guard sources.indices.contains(table.selectedRow) else { return }
-        sources.remove(at: table.selectedRow)
+        var updated = sources
+        updated.remove(at: table.selectedRow)
+        _ = commit(updated)
+    }
+    @discardableResult
+    private func commit(_ updated: [DictationSource]) -> Bool {
+        do {
+            try onChange(updated)
+            sources = updated
+            return true
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "App list could not be changed"
+            alert.informativeText = "Your previous selection was kept.\n\n\(error.localizedDescription)"
+            if let window { alert.beginSheetModal(for: window) }
+            return false
+        }
     }
 }

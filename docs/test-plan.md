@@ -10,10 +10,11 @@ The custom native runner works with Command Line Tools without XCTest.
 
 | Suite | Behavior protected |
 | --- | --- |
-| Settings | Defaults, exact/dotted source IDs, excluded apps, schema migration, retained clipboard policy/source selection, first-use readiness and reopening Settings after permission loss. |
+| Settings | Defaults, exact/dotted source IDs, excluded apps, schema migration, retained clipboard policy/source selection, immediate add/remove persistence, failed/busy edit rollback, first-use readiness and reopening Settings after permission loss. |
 | Launch at login | First registration, existing items, system opt-out across launches/updates, approval and failure handling, installation-path guards; mocked Service Management only. |
+| Accessibility navigation | A click requests either the native access alert or opens the already-authorized pane, never both; cancellation permits another request. Mocked effects, no TCC changes. |
 | Utilities | Settings round-trip and malformed-file preservation; append-only metadata logging, private new log files and refusal to follow a log symlink. |
-| Build tools | Exact signing identity lookup, missing-certificate refusal, explicit ad-hoc mode, credential-safe errors, running-app refusal and rollback after a failed installation replacement. |
+| Build tools | Exact signing identity lookup, private local certificate preference and explicit override, missing-certificate refusal, explicit ad-hoc mode, credential-safe errors, running-app refusal and rollback after a failed installation replacement. |
 | Capture | Empty results, same text in distinct revisions, original snapshot selection, zero-item original returned as empty UTF-8 text, refusal of unknown/nonempty returns, bounded history, focus/input cancellation, no queued or stale replay. |
 | Release | Return to Screen Sharing before paste starts a fresh transaction; missing source key-up and clipboard return have distinct timeout diagnostics; logs omit clipboard contents. |
 | Interception | Manual/local/unknown input passes through; accepted down/up pairing; slow capture and disabled filter fail safely; no deletion. |
@@ -51,6 +52,15 @@ Use synthetic text only. Check ordinary clipboard sharing first.
 6. Copy newer content during restoration; the helper must not overwrite it.
 7. Check Quit, relaunch, saved app selection and Accessibility after an upgrade.
    Normal Quit must allow pending restoration to finish.
+   When access is missing, click the Accessibility button and then the native
+   alert's Open System Settings. Expect one pane with the alert dismissed. A
+   trusted click should open the pane without an alert. Compare designated
+   requirements across two certificate-signed rebuilds, then verify the second
+   installed build retains access. A matching requirement alone is not a TCC trial.
+   In Settings, add and remove a disposable app entry. Verify each edit reaches
+   the settings file immediately and survives closing/reopening the window.
+   First-use completion must no longer depend on Save; a failed edit must show
+   an error and keep the previous selection.
 8. After sleep, test the first dictation before making another local copy. Record
    source key-up, returned clipboard revision and the visible remote result.
    If the pre-dictation clipboard was empty, expect successful insertion and

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.3 — 2026-10-06
+
+- Save and apply dictation-app additions and removals immediately. Remove Save
+  and Cancel from Settings and shrink the window to fit its contents. Closing
+  the window keeps saved changes; a failed edit leaves the previous list intact.
+- Complete first-use setup automatically when permissions and the app list are
+  ready, without requiring a Save button.
+- Avoid opening System Settings twice when requesting Accessibility. Let the
+  native permission alert handle navigation; open the pane directly only when
+  access is already granted.
+- Allow a private checkout preference for an existing local signing certificate,
+  so local installations can retain their code identity across rebuilds.
+
+Validation: the owner confirmed the installed candidate works and the native
+permission alert closes correctly. A second locally certificate-signed build
+retained Accessibility after replacement and relaunch. Automated tests cover
+immediate persistence, failed edits, permission navigation and signing selection.
+Public downloads remain ad-hoc signed and may need renewed Accessibility access
+after updates; local signing continuity does not change their trust model.
+
 ## 1.0.2 — 2026-10-06
 
 - Automatically register the installed helper to launch at login on first use.

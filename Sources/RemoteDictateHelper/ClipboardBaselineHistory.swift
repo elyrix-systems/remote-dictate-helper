@@ -36,6 +36,14 @@ struct ClipboardBaselineHistory {
     mutating func clear() { entries.removeAll() }
 
     static func resolve(_ candidates: [Entry], returned: LocalClipboardSnapshot, text: String?) throws -> Entry {
+        // A source can restore a zero-item clipboard as one empty UTF-8 text
+        // item (observed with Flow after wake). Accept only that representation
+        // of the latest empty original, retaining its exact zero-item snapshot.
+        // Nil text alone is not proof of emptiness: images/files have it too.
+        if let latest = candidates.last, latest.snapshot.items.isEmpty,
+           text == "", returned.items == [[.init(type: .string, data: Data())]] {
+            return latest
+        }
         // Prefer the most recent matching value, not an older rich version of
         // the same text. Text equality tolerates Screen Sharing changing the
         // representations of the returned original; it is not writer identity.

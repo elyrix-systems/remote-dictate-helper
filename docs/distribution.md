@@ -13,6 +13,13 @@ there is no separate setup dialog or shared-clipboard checkbox. Permissions cann
 by an installer. No helper or microphone
 configuration is installed on the remote Mac.
 
+The installed app automatically registers itself to launch at login on first use,
+using Apple's main-app login service. Settings shows its current status and opens
+macOS Login Items for approval or changes. Disabling it there survives updates.
+Running from a mounted DMG or build folder does not create a login item. This
+registration requires a signed bundle; it does not grant Accessibility or replace
+Gatekeeper/notarization checks.
+
 Source users install Apple Command Line Tools (Swift 6+) and Python 3, then run `make install`
 from their checkout. This prepares a local signing identity and installs an
 optimized arm64 app in `~/Applications`. The tools use Python's standard library.
@@ -146,6 +153,8 @@ On a clean local Mac account, using a **browser-downloaded** DMG:
    dictation, push-to-talk and leaving/returning before stopping recording.
 6. Test a normal Quit/update and persistence of settings/permissions.
 7. Inspect light/dark menu icon and Settings; use keyboard navigation.
+8. Verify the installed copy appears in Login Items and launches at the next
+   login. Check that a system opt-out survives a manual relaunch and update.
 
 Do not simulate a clean Gatekeeper/TCC installation by clearing the maintainer's
 permissions. Local signed installation is not proof of the downloaded preview flow.

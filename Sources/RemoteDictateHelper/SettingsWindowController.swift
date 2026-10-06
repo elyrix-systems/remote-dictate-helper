@@ -9,6 +9,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var draft: AppSettings
     private let onSave: (AppSettings) throws -> Void
     private let onPermissionGranted: () -> Bool
+    private let launchAtLogin: LaunchAtLogin
+    private let loginStatus = NSTextField(labelWithString: "")
     private let sourcesView = DictationSourcesView(sources: [])
     private let permissionStatus = NSTextField(labelWithString: "Not granted")
     private let permissionButton = NSButton(title: "Open Accessibility Settings…", target: nil, action: nil)
@@ -17,15 +19,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var previousTrust = false
     private var inputReady = false
 
-    init(settings: AppSettings, onSave: @escaping (AppSettings) throws -> Void,
+    init(settings: AppSettings, launchAtLogin: LaunchAtLogin, onSave: @escaping (AppSettings) throws -> Void,
          onPermissionGranted: @escaping () -> Bool) {
         self.settings = settings; self.draft = settings; self.onSave = onSave
         self.onPermissionGranted = onPermissionGranted
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 440),
+        self.launchAtLogin = launchAtLogin
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 500),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Remote Dictate Helper Settings"
         // One settings pane with a stable size; only the app list scrolls.
-        window.contentMinSize = NSSize(width: 540, height: 440)
+        window.contentMinSize = NSSize(width: 540, height: 500)
         window.contentMaxSize = window.contentMinSize
         window.isReleasedWhenClosed = false
         window.center()
@@ -64,6 +67,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         permissionStatus.font = .systemFont(ofSize: 12, weight: .medium)
         let permissionRow = NSStackView(views: [permissionButton, permissionStatus])
         permissionRow.spacing = 12; permissionRow.alignment = .centerY
+        let loginHeading = NSTextField(labelWithString: "Launch at login")
+        loginHeading.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+        let loginButton = NSButton(title: "Open Login Items…", target: self, action: #selector(openLoginItems))
+        loginButton.bezelStyle = .rounded; loginButton.isEnabled = launchAtLogin.isInstalled
+        loginStatus.font = .systemFont(ofSize: 12, weight: .medium)
+        loginStatus.textColor = .secondaryLabelColor
+        let loginRow = NSStackView(views: [loginButton, loginStatus])
+        loginRow.spacing = 12; loginRow.alignment = .centerY
         let heading = NSTextField(labelWithString: "Dictation apps")
         heading.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
         let explanation = NSTextField(wrappingLabelWithString:
@@ -74,12 +85,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let privacy = NSTextField(labelWithString: "The helper does not record audio or upload your clipboard.")
         privacy.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         privacy.textColor = .secondaryLabelColor
-        let body = NSStackView(views: [scope, permissionHeading, permissionDetail, permissionRow,
+        let body = NSStackView(views: [scope, permissionHeading, permissionDetail, permissionRow, loginHeading, loginRow,
                                        heading, explanation, sourcesView, privacy])
         body.orientation = .vertical; body.alignment = .leading; body.spacing = 8
         body.setCustomSpacing(18, after: scope)
         body.setCustomSpacing(4, after: permissionHeading)
         body.setCustomSpacing(18, after: permissionRow)
+        body.setCustomSpacing(4, after: loginHeading)
+        body.setCustomSpacing(18, after: loginRow)
         body.setCustomSpacing(4, after: heading)
         body.setCustomSpacing(16, after: sourcesView)
         body.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(body)
@@ -114,6 +127,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         sourcesView.sources = draft.sources
     }
     private func refreshPermission() {
+        loginStatus.stringValue = launchAtLogin.statusDescription
         let trusted = AccessibilityPermission.isTrusted(prompt: false)
         if trusted && !previousTrust { inputReady = onPermissionGranted() }
         if !trusted { inputReady = false }
@@ -129,6 +143,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
         refreshPermission()
     }
+    @objc private func openLoginItems() { launchAtLogin.openSystemSettings() }
     @objc private func save() {
         draft.sources = sourcesView.sources
         do { try onSave(draft) }

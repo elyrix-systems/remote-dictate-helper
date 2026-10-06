@@ -21,6 +21,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     private var completionPastePosted = false
     private var contextCancelled = false
     private var quitAfterClipboardRestore = false
+    private lazy var launchAtLogin = LaunchAtLogin(report: { [weak self] in self?.appendLog("login item \($0)") })
     private var busy: Bool {
         runningTask != nil || sharedClipboardLease != nil || clipboardRestoration.hasPendingRestore || clipboardSession != nil
     }
@@ -59,7 +60,8 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         configureMonitor()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
         appendLog("app launched version=\(version)")
-        if SettingsReadiness.shouldOpenOnLaunch(completed: UserDefaults.standard.bool(forKey: SettingsWindowController.completionKey),
+        let loginNeedsAttention = launchAtLogin.registerOnFirstLaunch()
+        if loginNeedsAttention || SettingsReadiness.shouldOpenOnLaunch(completed: UserDefaults.standard.bool(forKey: SettingsWindowController.completionKey),
                                                accessibility: AccessibilityPermission.isTrusted(prompt: false)) {
             openSettings()
         }
@@ -193,7 +195,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     @objc private func openSettings() {
         guard !busy else { setStatus("Wait for the current transfer before changing settings"); return }
         if settingsWindowController == nil {
-            settingsWindowController = SettingsWindowController(settings: settings,
+            settingsWindowController = SettingsWindowController(settings: settings, launchAtLogin: launchAtLogin,
                 onSave: { [weak self] in try self?.saveSettings($0) },
                 onPermissionGranted: { [weak self] in
                     guard let self, !self.busy else { return false }

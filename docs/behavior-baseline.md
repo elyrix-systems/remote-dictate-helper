@@ -79,3 +79,17 @@ The source changes remove retired paths and diagnostic polling while retaining
 the accepted paste protocol. Automated regression, privacy and bundle checks
 also passed. These trials validate the local candidate; they do not independently
 retest superwhisper, Valis or a browser-downloaded GitHub package.
+
+## Local launch-at-login integration
+
+On 2026-10-06, an unreleased local ad-hoc build was installed on the same Apple
+silicon Mac. Its first main-app login registration returned `.enabled`; Settings
+showed **On ✓**, and the system **Open at Login** list contained Remote Dictate
+Helper once. Registration required no administrator password. Accessibility was
+renewed after the update and the active paste filter started.
+
+The one-time registration preference was saved. Automated tests cover first
+registration, a never-seen service, approval/failure handling, retained opt-out
+across launches/updates and exclusion of uninstalled copies. No logout or reboot
+was performed to test the new login item, and no physical system opt-out/update
+trial was performed. These remain separate from the observed registration.

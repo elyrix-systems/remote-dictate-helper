@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.2 — 2026-10-06
 
 - Automatically register the installed helper to launch at login on first use.
   Show its status and a link to macOS Login Items in Settings. Preserve system
@@ -9,6 +9,14 @@
   single empty UTF-8 text item. This fixes an original-clipboard mismatch
   observed with Flow after sleep; the saved clipboard is still restored exactly.
   Keep refusal of unknown content and the deadline for missing source release.
+- Add regression coverage for empty-clipboard return and exact restoration,
+  first login-item registration, approval/failure handling and retained opt-out.
+
+Validation: the installed local build registered successfully in macOS Open at
+Login and started paste interception after Accessibility approval. Automatic
+launch after an actual logout/reboot has not yet been verified. The empty-buffer
+fix passed a reproduction test; a separate timeout when the dictation app does
+not return its clipboard remains under investigation.
 
 ## 1.0.1 — 2026-10-05
 

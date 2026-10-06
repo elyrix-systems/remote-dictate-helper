@@ -33,6 +33,7 @@ struct TestRunner {
         try testLaunchAtLogin()
         try testOperationalLog()
         try testSettingsPersistence()
+        try testImmediateSourceSettings()
         let settings = SettingsTests(); try settings.testMigrationRemovesUnusedFields(); settings.testSourceScope()
         try CaptureTests().testCaptureLifecycle()
         let emptyReturn = EmptyClipboardReturnTests()

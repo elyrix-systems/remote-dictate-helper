@@ -93,3 +93,14 @@ registration, a never-seen service, approval/failure handling, retained opt-out
 across launches/updates and exclusion of uninstalled copies. No logout or reboot
 was performed to test the new login item, and no physical system opt-out/update
 trial was performed. These remain separate from the observed registration.
+
+## Unreleased Settings autosave check
+
+On 2026-10-06, the locally installed candidate was checked with a disposable app
+entry. Adding it through the native picker wrote the settings file before the
+window closed. Removing it also persisted immediately, restoring the original
+settings exactly. Closing the window did not change the saved selection. The
+compact window was visually checked with no Save/Cancel footer or clipped text.
+Failure/busy rollback and retention of source clipboard policies passed automated
+tests. The paste protocol was unchanged; this UI check is not a new remote-paste
+or clean-account permission test.

@@ -21,7 +21,7 @@ if __name__ == "__main__":
     if mode not in {"preview", "notarized"}:
         raise SystemExit("Expected preview or notarized")
     print(section((root / "CHANGELOG.md").read_text(), version))
-    print("\n## Install\n\nDownload the Apple-silicon DMG (Apple silicon only, macOS 26+), drag the app to Applications, eject the image and open the installed app. In Settings, grant Accessibility and choose your dictation apps, then Save. Quit an existing helper normally before replacing it.")
+    print("\n## Install\n\nDownload the Apple-silicon DMG (Apple silicon only, macOS 26+), drag the app to Applications, eject the image and open the installed app. In Settings, grant Accessibility and choose your dictation apps. List changes save automatically. Quit an existing helper normally before replacing it.")
     if mode == "preview":
         print("\n**Not Apple notarized.** This download is ad-hoc signed, not signed with an Apple Developer ID or notarized. macOS may block it. If you trust the source, Apple documents the per-app [Open Anyway option](https://support.apple.com/en-us/102445) in System Settings → Privacy & Security. Managed Macs may disallow it. Updates may require granting Accessibility again. Never disable Gatekeeper or install a publisher certificate to run this app.")
     else:

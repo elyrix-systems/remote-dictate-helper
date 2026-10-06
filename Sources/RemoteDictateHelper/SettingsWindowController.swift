@@ -5,13 +5,20 @@ import RemoteDictateCore
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     // Retain the existing preference so an upgrade does not repeat first use.
     static let completionKey = "setupCompletedV1"
-    var settings: AppSettings { didSet { draft = settings; loadFields() } }
-    private var draft: AppSettings
-    private let onSave: (AppSettings) throws -> Void
+    var settings: AppSettings {
+        get { sourceSettings.value }
+        set { sourceSettings.value = newValue; loadFields() }
+    }
+    private let sourceSettings: DictationSourceSettings
     private let onPermissionGranted: () -> Bool
     private let launchAtLogin: LaunchAtLogin
     private let loginStatus = NSTextField(labelWithString: "")
-    private let sourcesView = DictationSourcesView(sources: [])
+    private lazy var sourcesView = DictationSourcesView(sources: settings.sources, onChange: { [weak self] sources in
+        guard let self else { throw CancellationError() }
+        try self.sourceSettings.updateSources(sources)
+        self.previousTrust = false
+        self.refreshPermission()
+    })
     private let permissionStatus = NSTextField(labelWithString: "Not granted")
     private let permissionButton = NSButton(title: "Open Accessibility Settings…", target: nil, action: nil)
     private let installed = !Bundle.main.bundleURL.path.hasPrefix("/Volumes/")
@@ -21,14 +28,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     init(settings: AppSettings, launchAtLogin: LaunchAtLogin, onSave: @escaping (AppSettings) throws -> Void,
          onPermissionGranted: @escaping () -> Bool) {
-        self.settings = settings; self.draft = settings; self.onSave = onSave
+        self.sourceSettings = DictationSourceSettings(value: settings, persist: onSave)
         self.onPermissionGranted = onPermissionGranted
         self.launchAtLogin = launchAtLogin
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 500),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 450),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Remote Dictate Helper Settings"
         // One settings pane with a stable size; only the app list scrolls.
-        window.contentMinSize = NSSize(width: 540, height: 500)
+        window.contentMinSize = NSSize(width: 540, height: 450)
         window.contentMaxSize = window.contentMinSize
         window.isReleasedWhenClosed = false
         window.center()
@@ -97,18 +104,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         body.setCustomSpacing(16, after: sourcesView)
         body.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(body)
 
-        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancel))
-        cancel.keyEquivalent = "\u{1b}"
-        let save = NSButton(title: "Save", target: self, action: #selector(save))
-        save.keyEquivalent = "\r"
-        for button in [cancel, save] {
-            button.bezelStyle = .rounded
-            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
-        }
-        window?.defaultButtonCell = save.cell as? NSButtonCell
-        let footer = NSStackView(views: [cancel, save]); footer.spacing = 8
-        footer.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(footer)
-
         NSLayoutConstraint.activate([
             body.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
             body.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
@@ -117,14 +112,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             permissionDetail.widthAnchor.constraint(equalTo: body.widthAnchor),
             explanation.widthAnchor.constraint(equalTo: body.widthAnchor),
             sourcesView.widthAnchor.constraint(equalTo: body.widthAnchor),
-            footer.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
-            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -20),
-            footer.topAnchor.constraint(greaterThanOrEqualTo: body.bottomAnchor, constant: 20)
+            body.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -20)
         ])
     }
     private func loadFields() {
         guard isWindowLoaded else { return }
-        sourcesView.sources = draft.sources
+        sourcesView.sources = settings.sources
     }
     private func refreshPermission() {
         loginStatus.stringValue = launchAtLogin.statusDescription
@@ -134,6 +127,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         previousTrust = trusted
         permissionStatus.stringValue = trusted ? (inputReady ? "Allowed ✓" : "Reopen the helper") : "Not granted"
         permissionStatus.textColor = trusted && inputReady ? .systemGreen : .secondaryLabelColor
+        if !UserDefaults.standard.bool(forKey: Self.completionKey),
+           SettingsReadiness(installed: installed, accessibility: trusted, inputReady: inputReady,
+                             sourceCount: settings.sources.count).canCompleteInitialConfiguration {
+            UserDefaults.standard.set(true, forKey: Self.completionKey)
+        }
     }
     @objc private func requestPermission() {
         guard installed else { return }
@@ -144,22 +142,4 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         refreshPermission()
     }
     @objc private func openLoginItems() { launchAtLogin.openSystemSettings() }
-    @objc private func save() {
-        draft.sources = sourcesView.sources
-        do { try onSave(draft) }
-        catch {
-            let alert = NSAlert()
-            alert.messageText = "Settings could not be saved"
-            alert.informativeText = error.localizedDescription
-            if let window { alert.beginSheetModal(for: window) }
-            return
-        }
-        previousTrust = false; refreshPermission()
-        if SettingsReadiness(installed: installed, accessibility: previousTrust, inputReady: inputReady,
-                             sourceCount: draft.sources.count).canCompleteInitialConfiguration {
-            UserDefaults.standard.set(true, forKey: Self.completionKey)
-        }
-        close()
-    }
-    @objc private func cancel() { close() }
 }

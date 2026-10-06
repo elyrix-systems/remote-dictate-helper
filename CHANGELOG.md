@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Save and apply dictation-app additions and removals immediately. Remove Save
+  and Cancel from Settings and shrink the window to fit its contents. Closing
+  the window keeps saved changes; a failed edit leaves the previous list intact.
+- Complete first-use setup automatically when permissions and the app list are
+  ready, without requiring a Save button.
+
 ## 1.0.2 — 2026-10-06
 
 - Automatically register the installed helper to launch at login on first use.

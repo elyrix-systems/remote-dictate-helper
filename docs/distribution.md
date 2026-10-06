@@ -8,7 +8,8 @@ compiled executable declare macOS 26.0 as their minimum version.
 End users download an Apple silicon DMG from GitHub Releases, drag the app to
 Applications, eject the image and open the installed copy. The single Settings window
 requests Accessibility only after a click and watches for the grant. It provides
-an app list with local application icons. Clipboard coordination is automatic;
+an app list with local application icons. Adding/removing an app saves immediately;
+close Settings when finished. Clipboard coordination is automatic;
 there is no separate setup dialog or shared-clipboard checkbox. Permissions cannot be pre-granted
 by an installer. No helper or microphone
 configuration is installed on the remote Mac.

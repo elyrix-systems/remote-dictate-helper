@@ -29,6 +29,7 @@ New dictations are not queued while a transaction is finishing.
 | `ExplicitPasteShortcut` / `GuardedPaste` | One private native Command+V, with target, trust, modifier and clipboard guards; no Backspace or retry. |
 | `LocalClipboardRestoration` / `DeferredClipboardCompletion` | Restore only the owned revision, send the original clipboard before sharing-on, then finish. |
 | `LaunchAtLogin` | One-time registration of the installed main app through `SMAppService`; macOS owns subsequent enable/disable choices. |
+| `DictationSourceSettings` | Commit source-list edits immediately after persistence/application succeeds; retain the previous selection on failure. |
 
 The event filter has an 80 ms capture-decision queue budget and a 100 ms clipboard
 capture budget. Late capture passes the original input through. Accepted V-down
@@ -93,3 +94,14 @@ and [registration](https://developer.apple.com/documentation/servicemanagement/s
 
 Reference: Apple's [event tap callback](https://developer.apple.com/documentation/coregraphics/cgeventtapcallback)
 and [event-source state tables](https://developer.apple.com/documentation/coregraphics/cgeventsourcestateid).
+
+## Settings edits
+
+Adding or removing a dictation app persists the proposed settings and applies
+them to the monitor before the displayed list changes. A failed write or busy
+transfer rejects the edit, keeps the previous list and presents an error. Closing
+the window performs no write or rollback. Permission and login-item changes remain
+managed by macOS. First-use completion is recorded once the installed app has
+Accessibility, a ready input monitor and at least one saved source; no Save action
+is required. Tests exercise persistence and rejection with a disposable settings
+file; the native picker and window still require local UI verification.

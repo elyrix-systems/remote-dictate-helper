@@ -22,7 +22,7 @@ swiftc -swift-version 6 -parse-as-library -I "$test_module_dir" \
   "$runtime/PasteEventFilter.swift" "$runtime/DictationPasteMonitor.swift" "$runtime/ClipboardBaselineHistory.swift" \
   "$runtime/CapturedClipboard.swift" "$runtime/LocalClipboardRestoration.swift" \
   "$runtime/DeferredClipboardCompletion.swift" "$runtime/AccessibilityPermission.swift" \
-  "$runtime/OperationalLog.swift" "$runtime/LaunchAtLogin.swift" \
+  "$runtime/OperationalLog.swift" "$runtime/LaunchAtLogin.swift" "$runtime/DictationSourceSettings.swift" \
   "$runtime/ExplicitPasteShortcut.swift" \
   "$runtime/GuardedPaste.swift" "$runtime/ScreenSharingClipboardMenu.swift" \
   "${core_objects[@]}" -o "$repo_root/.build/remote-dictate-tests"

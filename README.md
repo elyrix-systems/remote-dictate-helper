@@ -60,7 +60,7 @@ Get the DMG from the [latest stable release](https://github.com/elyrix-systems/r
 
 1. Open the DMG and drag **Remote Dictate Helper.app** to **Applications**.
 2. Eject the disk image, then open the installed app from Applications.
-3. In **Settings**, grant Accessibility and choose your dictation apps, then Save.
+3. In **Settings**, grant Accessibility and choose your dictation apps. List changes save automatically.
 
 **Version 1.0 is stable, but the download is not Apple notarized.** It is ad-hoc signed, not signed
 with an Apple Developer ID. macOS may block the first launch. If you have reviewed
@@ -128,10 +128,12 @@ ID signing, and [contributing](CONTRIBUTING.md) to submit a change.
    helper checks the grant when you return; you can reopen **Settings…** from its
    microphone-and-window menu bar icon at any time. No Microphone, Screen Recording,
    Full Disk Access or System Events Automation permission is requested by this app.
-3. In that same window, choose your dictation apps and **Save**. Wispr Flow,
+3. In that same window, choose your dictation apps. Changes save immediately. Wispr Flow,
    superwhisper and Valis are included for new
    installations. Use **Add App…** or **Remove** to manage your dictation apps.
-   Existing source selections are preserved on upgrade.
+   Existing source selections are preserved on upgrade. Close the window when
+   finished; there are no Save or Cancel buttons. If a change cannot be saved,
+   the previous list remains and the helper shows an error.
 4. In your dictation app, use clipboard-based paste and keep/restore your previous
    clipboard. In superwhisper, use **Paste result text** and **Keep what I have
    copied**. Other insertion methods may bypass the helper.

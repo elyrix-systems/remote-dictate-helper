@@ -10,7 +10,7 @@ The custom native runner works with Command Line Tools without XCTest.
 
 | Suite | Behavior protected |
 | --- | --- |
-| Settings | Defaults, exact/dotted source IDs, excluded apps, schema migration, retained clipboard policy/source selection, first-use readiness and reopening Settings after permission loss. |
+| Settings | Defaults, exact/dotted source IDs, excluded apps, schema migration, retained clipboard policy/source selection, immediate add/remove persistence, failed/busy edit rollback, first-use readiness and reopening Settings after permission loss. |
 | Launch at login | First registration, existing items, system opt-out across launches/updates, approval and failure handling, installation-path guards; mocked Service Management only. |
 | Utilities | Settings round-trip and malformed-file preservation; append-only metadata logging, private new log files and refusal to follow a log symlink. |
 | Build tools | Exact signing identity lookup, missing-certificate refusal, explicit ad-hoc mode, credential-safe errors, running-app refusal and rollback after a failed installation replacement. |
@@ -51,6 +51,10 @@ Use synthetic text only. Check ordinary clipboard sharing first.
 6. Copy newer content during restoration; the helper must not overwrite it.
 7. Check Quit, relaunch, saved app selection and Accessibility after an upgrade.
    Normal Quit must allow pending restoration to finish.
+   In Settings, add and remove a disposable app entry. Verify each edit reaches
+   the settings file immediately and survives closing/reopening the window.
+   First-use completion must no longer depend on Save; a failed edit must show
+   an error and keep the previous selection.
 8. After sleep, test the first dictation before making another local copy. Record
    source key-up, returned clipboard revision and the visible remote result.
    If the pre-dictation clipboard was empty, expect successful insertion and

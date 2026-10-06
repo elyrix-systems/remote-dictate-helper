@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Automatically register the installed helper to launch at login on first use.
+  Show its status and a link to macOS Login Items in Settings. Preserve system
+  opt-out across launches and updates; never register disk-image or build copies.
 - Recognize an empty local clipboard when the dictation app returns it as a
   single empty UTF-8 text item. This fixes an original-clipboard mismatch
   observed with Flow after sleep; the saved clipboard is still restored exactly.

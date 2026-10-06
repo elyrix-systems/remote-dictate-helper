@@ -11,6 +11,7 @@ The custom native runner works with Command Line Tools without XCTest.
 | Suite | Behavior protected |
 | --- | --- |
 | Settings | Defaults, exact/dotted source IDs, excluded apps, schema migration, retained clipboard policy/source selection, first-use readiness and reopening Settings after permission loss. |
+| Launch at login | First registration, existing items, system opt-out across launches/updates, approval and failure handling, installation-path guards; mocked Service Management only. |
 | Utilities | Settings round-trip and malformed-file preservation; append-only metadata logging, private new log files and refusal to follow a log symlink. |
 | Build tools | Exact signing identity lookup, missing-certificate refusal, explicit ad-hoc mode, credential-safe errors, running-app refusal and rollback after a failed installation replacement. |
 | Capture | Empty results, same text in distinct revisions, original snapshot selection, zero-item original returned as empty UTF-8 text, refusal of unknown/nonempty returns, bounded history, focus/input cancellation, no queued or stale replay. |
@@ -56,6 +57,12 @@ Use synthetic text only. Check ordinary clipboard sharing first.
    exact empty restoration even when the source returns an empty text item.
    A source that never returns a new clipboard revision must still time out
    without replay; this is a separate failure from empty-format matching.
+9. Launch the installed app and check **Launch at login** in Settings and its
+   entry in macOS Login Items. Log out and back in (or restart) to verify an
+   actual automatic launch. Turn it off in macOS, manually reopen/update the app,
+   and verify it stays off. Re-enable it afterward if wanted. Do not log out or
+   restart the user's Mac without authorization; registration alone is not proof
+   of a successful next-login launch.
 
 Record app/OS versions, source clipboard settings, visible result, status and
 whether each step actually ran. Never claim remote receipt based only on a local

@@ -30,6 +30,7 @@ struct TestRunner {
     @MainActor static func main() async throws {
         testCaptureDecisionDeadline()
         testSettingsReadiness()
+        try testLaunchAtLogin()
         try testOperationalLog()
         try testSettingsPersistence()
         let settings = SettingsTests(); try settings.testMigrationRemovesUnusedFields(); settings.testSourceScope()

@@ -139,8 +139,13 @@ ID signing, and [contributing](CONTRIBUTING.md) to submit a change.
    field until **Done** appears in the helper’s menu before the next dictation.
 
 The helper works automatically while running; there is no enable switch, paste
-method selector or pause mode. Choose **Quit** to stop it. Optional launch at login
-can be configured in macOS **Login Items** by adding the installed app.
+method selector or pause mode. On its first launch from `/Applications` or
+`~/Applications`, it registers to **launch at login**. Settings shows the current
+status and an **Open Login Items…** button. If macOS requests approval, allow it in
+**System Settings → General → Login Items & Extensions**. You can turn it off
+there; restarting or updating the helper will not turn it back on. Choose **Quit**
+to stop the current session. Copies launched from a disk image or build folder
+do not register for login.
 
 Adding an app allows its paste events; it does not establish compatibility. An
 app must emit an identifiable Command+V with clipboard content. Direct text

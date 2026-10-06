@@ -28,6 +28,7 @@ New dictations are not queued while a transaction is finishing.
 | `ScreenSharingClipboardMenu` / `ExplicitClipboardTransfer` | Validate the original connection and clipboard revision; sharing off, captured snapshot write, Send Clipboard. |
 | `ExplicitPasteShortcut` / `GuardedPaste` | One private native Command+V, with target, trust, modifier and clipboard guards; no Backspace or retry. |
 | `LocalClipboardRestoration` / `DeferredClipboardCompletion` | Restore only the owned revision, send the original clipboard before sharing-on, then finish. |
+| `LaunchAtLogin` | One-time registration of the installed main app through `SMAppService`; macOS owns subsequent enable/disable choices. |
 
 The event filter has an 80 ms capture-decision queue budget and a 100 ms clipboard
 capture budget. Late capture passes the original input through. Accepted V-down
@@ -67,6 +68,28 @@ release. Ambiguous or physical-key states remain blocked.
 These are local integration results, not universal production compatibility.
 Changes to OS permissions, input routing or another app's protocol require a
 small physical spike before expanding support. See [test-plan.md](test-plan.md).
+
+## Launch at login
+
+The first launch from `/Applications` or `~/Applications` registers
+`SMAppService.mainApp`. Successful or approval-required registration records a
+version-independent preference. Later launches and updates do not re-register,
+so turning it off in macOS remains effective. Settings reads the system's current
+status and opens Login Items for changes or approval. A registration failure
+opens Settings, logs the error domain/code and may retry on the next launch.
+Build, command-line, translocated and mounted-DMG copies do not register.
+
+Risk to verify locally: registration must work with the distribution's ad-hoc
+signature, and a login must launch the installed app. Apple's API contract is
+external evidence; mocked tests protect first-use/opt-out behavior. System
+registration and an actual subsequent login are separate integration checks.
+There is no additional executable, launch-agent plist, daemon or root access.
+On 2026-10-06, the installed ad-hoc build returned `.enabled` and appeared once in
+macOS **Open at Login**, without an administrator password for registration.
+The next-login launch remains pending; see [behavior-baseline.md](behavior-baseline.md).
+
+Reference: Apple's [main app login item](https://developer.apple.com/documentation/servicemanagement/smappservice/mainapp)
+and [registration](https://developer.apple.com/documentation/servicemanagement/smappservice/register()).
 
 Reference: Apple's [event tap callback](https://developer.apple.com/documentation/coregraphics/cgeventtapcallback)
 and [event-source state tables](https://developer.apple.com/documentation/coregraphics/cgeventsourcestateid).

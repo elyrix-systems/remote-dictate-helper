@@ -169,3 +169,28 @@ remote insertion for all three default sources in this local Windows App setup.
 They use the same selected-source handler; no vendor-specific change was needed.
 This follow-up did not separately report clipboard restoration, recording modes
 or additional remote endpoints.
+
+## Local clipboard-isolation candidate: 110.7.3
+
+On 2026-10-07, the owner tested Wispr Flow with the signed diagnostic candidate
+**1.1.0 / build 110.7.3** in both Apple Screen Sharing and Windows App. The owner
+confirmed both insertions completed and neither app hung. The local update kept
+the existing signing requirement and both input filters started without a new
+Accessibility grant.
+
+Local metadata recorded a 28 ms Screen Sharing capture decision, source clipboard
+release, one replay, local restoration and shared-clipboard re-enablement. The
+Windows path read its text representation in 19 ms and completed one native paste
+sequence in 104 ms. Remote insertion and absence of visible hangs are established
+by the owner's report; the log does not establish remote receipt independently.
+The owner did not separately verify every original clipboard format in this trial.
+
+The complete regression suite, eight repeated isolation checks and a named-board
+check using the signed app executable passed. Tests include a separate provider
+blocked for 60 seconds, bounded timeout/cancellation, main-actor progress, reader
+reaping, fresh reads after failure and refusal of a late capture. All artificial
+provider failures used disposable named boards, never the general clipboard.
+
+This is a local candidate, not a new GitHub release. A first dictation after sleep
+and prolonged normal use remain to be observed. These checks do not establish a
+fix for intermittent stale RDP contents or exclude independent source-app stalls.

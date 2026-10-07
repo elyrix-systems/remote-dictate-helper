@@ -20,50 +20,28 @@ struct WindowsClipboardRead: Sendable {
 
 /// Materializes one advertised text representation without copying it back.
 /// This is local availability, not acknowledgement from the remote clipboard.
-/// Only one blocking AppKit read can be outstanding, including after timeout.
+/// All external data access is confined to the shared read-only child process.
 final class WindowsClipboardReader: Sendable {
     static let shared = WindowsClipboardReader()
-    private let worker = DispatchQueue(label: "systems.elyrix.RemoteDictateHelper.clipboard-read", qos: .userInitiated)
-    private let slot = DispatchSemaphore(value: 1)
-    private let read: @Sendable (Int) throws -> WindowsClipboardRead
+    private let name: NSPasteboard.Name
     private let timeout: TimeInterval
 
-    init(name: NSPasteboard.Name = .general, timeout: TimeInterval = 0.25,
-         read: (@Sendable (Int) throws -> WindowsClipboardRead)? = nil) {
-        self.timeout = timeout
-        self.read = read ?? { revision in try Self.readOnce(name: name, revision: revision) }
+    init(name: NSPasteboard.Name = .general, timeout: TimeInterval = 0.25) {
+        self.name = name; self.timeout = timeout
     }
 
     func prepare(revision: Int) async throws -> WindowsClipboardRead {
-        try Task.checkCancellation()
-        guard reserveWorker() else { throw WindowsClipboardReadError.busy }
-        let request = ClipboardReadRequest(timeout: timeout)
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                request.install(continuation)
-                let timer = Task.detached { [timeout] in
-                    do { try await Task.sleep(for: .seconds(timeout)) }
-                    catch { return }
-                    request.finish(.failure(WindowsClipboardReadError.timedOut))
-                }
-                worker.async { [slot, read] in
-                    guard request.isPending else {
-                        slot.signal(); timer.cancel()
-                        request.finish(.failure(WindowsClipboardReadError.timedOut)); return
-                    }
-                    let result = Result { try autoreleasepool { try read(revision) } }
-                    slot.signal(); timer.cancel()
-                    request.finish(result)
-                }
-            }
-        } onCancel: {
-            request.finish(.failure(CancellationError()))
-        }
+        do {
+            let response = try await IsolatedClipboardReader.shared.read(name: name, revision: revision, textOnly: true, timeout: timeout)
+            guard let type = response.type, let bytes = response.bytes else { throw WindowsClipboardReadError.unavailable }
+            return WindowsClipboardRead(type: type, bytes: bytes)
+        } catch LocalClipboardError.changed { throw WindowsClipboardReadError.changed }
+        catch IsolatedClipboardError.busy { throw WindowsClipboardReadError.busy }
+        catch IsolatedClipboardError.timedOut { throw WindowsClipboardReadError.timedOut }
+        catch IsolatedClipboardError.unavailable { throw WindowsClipboardReadError.unavailable }
     }
 
-    // Zero-timeout admission only; never waits on the async caller's thread.
-    private func reserveWorker() -> Bool { slot.wait(timeout: .now()) == .success }
-
+    /// Called only by ClipboardReaderProcess (or eager component fixtures).
     static func readOnce(name: NSPasteboard.Name, revision: Int) throws -> WindowsClipboardRead {
         let board = NSPasteboard(name: name)
         guard board.changeCount == revision else { throw WindowsClipboardReadError.changed }
@@ -79,40 +57,5 @@ final class WindowsClipboardReader: Sendable {
         guard let data else { throw WindowsClipboardReadError.unavailable }
         guard !data.isEmpty else { throw WindowsClipboardReadError.empty }
         return WindowsClipboardRead(type: type.rawValue, bytes: data.count)
-    }
-}
-
-/// Cancellation/timeout release the caller even if an external pasteboard owner
-/// is blocked. Late worker results can neither resume twice nor trigger input.
-private final class ClipboardReadRequest: @unchecked Sendable {
-    private let lock = NSLock()
-    private let deadline: TimeInterval
-    private var result: Result<WindowsClipboardRead, Error>?
-    private var continuation: CheckedContinuation<WindowsClipboardRead, Error>?
-
-    init(timeout: TimeInterval) { deadline = ProcessInfo.processInfo.systemUptime + timeout }
-
-    var isPending: Bool {
-        lock.lock(); defer { lock.unlock() }
-        return result == nil && ProcessInfo.processInfo.systemUptime < deadline
-    }
-
-    func install(_ continuation: CheckedContinuation<WindowsClipboardRead, Error>) {
-        lock.lock()
-        if let result { lock.unlock(); continuation.resume(with: result) }
-        else { self.continuation = continuation; lock.unlock() }
-    }
-
-    func finish(_ proposed: Result<WindowsClipboardRead, Error>) {
-        lock.lock()
-        guard result == nil else { lock.unlock(); return }
-        let resolved: Result<WindowsClipboardRead, Error>
-        if case .success = proposed, ProcessInfo.processInfo.systemUptime >= deadline {
-            resolved = .failure(WindowsClipboardReadError.timedOut)
-        } else { resolved = proposed }
-        result = resolved
-        let waiting = continuation; continuation = nil
-        lock.unlock()
-        waiting?.resume(with: resolved)
     }
 }

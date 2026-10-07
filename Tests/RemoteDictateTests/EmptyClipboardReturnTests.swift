@@ -7,12 +7,12 @@ final class EmptyClipboardReturnTests {
         var time: TimeInterval = 0
         var captures: [UUID] = []
         var errors: [Error] = []
-        let monitor = DictationPasteMonitor(board: board, targetPID: { 100 }, isAvailable: { true },
+        let monitor = DictationPasteMonitor(board: board, access: eagerTestClipboardAccess(), targetPID: { 100 }, isAvailable: { true },
             now: { time }, onCaptured: { captures.append($0) }, onError: { errors.append($0) })
         let down = DictationPasteMonitor.Event(kind: .down, key: 9, command: true, pid: 42, fromDictation: true)
         let up = DictationPasteMonitor.Event(kind: .up, key: 9, command: false, pid: 42, fromDictation: true)
         var outcomes: [LocalClipboardRestoration.Outcome] = []
-        let restore = LocalClipboardRestoration(board: board, now: { time }, onOutcome: { outcome, receipt in
+        let restore = LocalClipboardRestoration(board: board, access: eagerTestClipboardAccess(), now: { time }, onOutcome: { outcome, receipt in
             outcomes.append(outcome)
             expectNotNil(receipt)
             do { try receipt?.validate() } catch { fail("Empty original receipt must validate") }

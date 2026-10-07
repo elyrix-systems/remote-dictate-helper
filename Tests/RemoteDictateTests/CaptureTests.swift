@@ -12,7 +12,7 @@ final class CaptureTests {
         var time: TimeInterval = 0
         var captures: [UUID] = []
         var errors: [Error] = []
-        let monitor = DictationPasteMonitor(board: board, targetPID: { target }, isAvailable: { available },
+        let monitor = DictationPasteMonitor(board: board, access: eagerTestClipboardAccess(), targetPID: { target }, isAvailable: { available },
             now: { time }, onCaptured: { captures.append($0) }, onError: { errors.append($0) })
         let down = DictationPasteMonitor.Event(kind: .down, key: 9, command: true, pid: 42, fromDictation: true)
         let up = DictationPasteMonitor.Event(kind: .up, key: 9, command: false, pid: 42, fromDictation: true)
@@ -78,7 +78,7 @@ final class CaptureTests {
             copy(marker) // Flow/bridge returned text, with different formats.
             let result = try monitor.completeIfReleased(id)!
             precondition(result.payload.text == "same payload" && result.original.snapshot == original)
-            let restore = LocalClipboardRestoration(board: board, now: { time })
+            let restore = LocalClipboardRestoration(board: board, access: eagerTestClipboardAccess(), now: { time })
             let session = try restore.begin(observedOriginal: result.original.snapshot)
             let baseline = try restore.captureReplayBaseline(releasedRevision: result.releasedRevision, session: session)
             try restore.writeCapturedSnapshot(result.payload.snapshot, text: result.payload.text, session: session, replacing: baseline)
@@ -120,7 +120,7 @@ final class CaptureTests {
         // A later user copy invalidates replay, including equal text.
         setup(); let late = capture(); monitor.observe(up); copy("original")
         let released = try monitor.completeIfReleased(late)!
-        let restore = LocalClipboardRestoration(board: board)
+        let restore = LocalClipboardRestoration(board: board, access: eagerTestClipboardAccess())
         let session = try restore.begin(observedOriginal: released.original.snapshot)
         let baseline = try restore.captureReplayBaseline(releasedRevision: released.releasedRevision, session: session)
         copy("original")
@@ -129,7 +129,7 @@ final class CaptureTests {
 
         // Bounded snapshot retention and loss of target clear old candidates.
         var small = ClipboardBaselineHistory(maximumBytes: 1024, maximumEntries: 2)
-        for value in ["one", "two", "three"] { copy(value); try small.sample(board) }
+        for value in ["one", "two", "three"] { copy(value); try small.sample(board, access: eagerTestClipboardAccess()) }
         precondition(small.entries.count == 2 && small.entries.first?.text == "two")
         setup(); target = nil; monitor.sample(); target = 100
         copy("payload"); monitor.observe(down)

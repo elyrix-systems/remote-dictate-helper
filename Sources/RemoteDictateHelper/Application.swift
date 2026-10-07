@@ -224,6 +224,8 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         let driver = try ScreenSharingClipboardMenu(target: target, transcript: payload.text,
             expectedWindow: window, input: input, writeTranscript: { [clipboardRestoration] _ in
                 try clipboardRestoration.writeCapturedSnapshot(payload.snapshot, text: payload.text, session: session, replacing: baseline)
+            }, validateTranscript: { [clipboardRestoration] in
+                try clipboardRestoration.validateOwned(session)
             }, trace: { [weak self] in self?.appendLog("clipboard menu \($0)") })
         sharedClipboardLease = try ExplicitClipboardTransfer().begin(using: driver)
         sharedClipboardDriver = driver; completionPastePosted = false; contextCancelled = false
@@ -366,6 +368,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
 @main
 enum RemoteDictateEntry {
     @MainActor static func main() {
+        if ClipboardReaderProcess.runIfRequested() { return }
         let application = NSApplication.shared
         let controller = RemoteDictateApp()
         application.setActivationPolicy(.accessory)

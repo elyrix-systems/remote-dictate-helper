@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 func fail(_ message: String, file: StaticString = #filePath, line: UInt = #line) -> Never {
     fatalError(message, file: (file), line: line)
@@ -28,6 +28,10 @@ func expectThrows<T>(_ value: @autoclosure () throws -> T, _ message: String = "
 @main
 struct TestRunner {
     @MainActor static func main() async throws {
+        if ClipboardReaderProcess.runIfRequested() || runClipboardProviderFixture() { return }
+        try await testIsolatedClipboardReading()
+        try await testAsyncCaptureAndExpiredDecision()
+        if CommandLine.arguments.contains("--isolation-only") { return }
         testCaptureDecisionDeadline()
         testSettingsReadiness()
         testAccessibilitySettingsNavigation()
@@ -81,4 +85,16 @@ func testCaptureDecisionDeadline() {
     let refused = PasteCaptureDecision()
     refused.evaluate { false }
     expectFalse(refused.wait())
+}
+
+// Component fixtures own eager synthetic data and run on its owner thread.
+// Isolation/provider liveness is separately tested through the real subprocess.
+@MainActor func eagerTestClipboardAccess() -> ClipboardAccess {
+    ClipboardAccess(immediateRead: { board in
+        let revision = board.changeCount
+        let snapshot = try LocalClipboardSnapshot.capture(board)
+        let text = board.string(forType: .string)
+        guard board.changeCount == revision else { throw LocalClipboardError.changed }
+        return .init(revision: revision, snapshot: snapshot, text: text)
+    })
 }

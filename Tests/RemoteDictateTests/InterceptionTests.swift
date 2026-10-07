@@ -10,7 +10,7 @@ final class InterceptionTests {
                 for policy in ClipboardReturnPolicy.allCases {
                     var selected = source; selected.clipboardReturn = policy
                     var id: UUID?
-                    let monitor = DictationPasteMonitor(board: board, targetPID: { 100 }, isAvailable: { true },
+                    let monitor = DictationPasteMonitor(board: board, access: eagerTestClipboardAccess(), targetPID: { 100 }, isAvailable: { true },
                         sources: [selected], onCaptured: { id = $0 }, onError: { fail("\($0)") })
                     let input = SourceInputHarness(sources: [selected], identifier: source.bundleIdentifier + suffix) {
                         monitor.observe($0)
@@ -42,7 +42,7 @@ final class InterceptionTests {
         var target: pid_t? = 100
         var available = true
         var ids: [UUID] = []; var errors: [Error] = []
-        let monitor = DictationPasteMonitor(board: board, targetPID: { target }, isAvailable: { available },
+        let monitor = DictationPasteMonitor(board: board, access: eagerTestClipboardAccess(), targetPID: { target }, isAvailable: { available },
             onCaptured: { ids.append($0) }, onError: { errors.append($0) })
         let down = DictationPasteMonitor.Event(kind: .down, key: 9, command: true, pid: 42, fromDictation: true)
         let up = DictationPasteMonitor.Event(kind: .up, key: 9, command: false, pid: 42, fromDictation: true)
@@ -87,7 +87,7 @@ final class InterceptionTests {
     @MainActor func testAppThatLeavesItsTranscript() throws {
         let board = NSPasteboard(name: .init("rdh-keeps-\(UUID())")); defer { board.releaseGlobally() }
         var id: UUID?
-        let monitor = DictationPasteMonitor(board: board, targetPID: { 100 }, isAvailable: { true },
+        let monitor = DictationPasteMonitor(board: board, access: eagerTestClipboardAccess(), targetPID: { 100 }, isAvailable: { true },
             onCaptured: { id = $0 }, onError: { fail("\($0)") })
         board.clearContents(); board.setString("old", forType: .string); monitor.sample()
         board.clearContents(); board.setString("new", forType: .string)
@@ -104,7 +104,7 @@ final class InterceptionTests {
     @MainActor func testSlowCapturePassesOriginalThrough() {
         let board = NSPasteboard(name: .init("rdh-slow-\(UUID())")); defer { board.releaseGlobally() }
         var clock: TimeInterval = 0; var errors = 0
-        let monitor = DictationPasteMonitor(board: board, targetPID: { 100 }, isAvailable: { true },
+        let monitor = DictationPasteMonitor(board: board, access: eagerTestClipboardAccess(), targetPID: { 100 }, isAvailable: { true },
             now: { clock += 0.2; return clock }, onCaptured: { _ in fail("Slow capture must not suppress") }, onError: { _ in errors += 1 })
         board.clearContents(); board.setString("old", forType: .string); monitor.sample()
         board.clearContents(); board.setString("new", forType: .string)

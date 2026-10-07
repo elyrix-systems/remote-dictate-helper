@@ -4,8 +4,9 @@
 
 Run `make test`, `make privacy-scan` and `REMOTE_DICTATE_CODESIGN_IDENTITY=- make build`
 on macOS 26 or later with Swift 6 and Python 3.
-Tests use disposable named pasteboards and mocked key posting. They do not use
-the general clipboard, real keystrokes, a microphone, other apps or permissions.
+Tests use disposable named pasteboards and mocked key posting. Isolation tests additionally launch owned read-only reader/provider subprocesses.
+They do not use the general clipboard, real keystrokes, a microphone, user apps
+or permissions.
 The custom native runner works with Command Line Tools without XCTest.
 
 | Suite | Behavior protected |
@@ -23,7 +24,8 @@ The custom native runner works with Command Line Tools without XCTest.
 | Clipboard | Full-format original restoration, UTF-8 HTML transport, empty originals, clipboard ownership, newer/equal-text copies and restoration deadlines. |
 | Input | Exactly one private Command+V; permission/target/modifier refusal; mid-sequence release; HID residue guards and no retry. |
 | Windows App | Consecutive source pastes, busy and revision guards, manual/local/self input exclusion, complete private Command+V flags/types, Fn release, target/window/input/clipboard cancellation, balanced release on Quit and disabled filter. No clipboard writes or real keystrokes. |
-| Windows clipboard preparation | Read before all native keys; named-board text/rich formats unchanged, empty/missing/stale data refused, timeout and cancellation release the caller, one outstanding worker including after timeout, late completion cannot replay, context changes during reading cancel input. |
+| Clipboard isolation | Real subprocess reads of rich/multiple-item and deferred named boards; a provider blocked for 60 seconds cannot block the main actor; timeout/cancellation reaps only the owned reader; following revisions remain readable; expired capture cannot replay. Full capture/release/restoration uses the production asynchronous reader. |
+| Windows clipboard preparation | Read before all native keys; named-board text/rich formats unchanged, empty/missing/stale data refused, timeout and cancellation release the caller, one owned reader with reaping on timeout, late completion cannot replay, context changes during reading cancel input. |
 | Completion | Deferred cleanup readiness, single completion attempt, busy refusal and errors. |
 | Transfer | Clipboard menu order, exact setting transitions, failure recovery, original Send before sharing-on and receipt validation. |
 | Core compatibility | Existing 1.0 library calls and conformers still compile, including fixed-clipboard validation and default preparation. |
@@ -87,6 +89,17 @@ Use synthetic text only. Check ordinary clipboard sharing first.
 Record app/OS versions, source clipboard settings, visible result, status and
 whether each step actually ran. Never claim remote receipt based only on a local
 log or replace physical integration checks with mocked events.
+
+## Local hang-fix check
+
+Use the signed diagnostic candidate on the local Mac. Confirm Settings and Quit
+remain responsive while entering/leaving Screen Sharing, including after normal
+sleep. Repeat ordinary clipboard paste and a synthetic dictation with exact local
+clipboard restoration. Repeat a Windows App dictation; record stale remote data
+separately, since isolation does not establish RDP readiness. Read-timeout logs
+must name baseline/candidate/source-return, the revision and failure without text.
+Do not trigger an artificial stall on the general clipboard or force-stop a source
+app to test this. The deliberate hung-provider test uses a disposable named board.
 
 ## Windows App physical checks
 

@@ -25,10 +25,13 @@ final class PasteCaptureDecision: @unchecked Sendable {
     private var completed = false
     private var accepted = false
     init(wait: TimeInterval = 0.08) { deadline = ProcessInfo.processInfo.systemUptime + wait }
-    func evaluate(_ body: () -> Bool) {
+    var remaining: TimeInterval { max(0, deadline - ProcessInfo.processInfo.systemUptime) }
+    // The body must only commit prepared state: no provider reads or waiting.
+    @discardableResult func evaluate(_ body: () -> Bool) -> Bool {
         lock.lock(); defer { lock.unlock() }
-        guard !completed, ProcessInfo.processInfo.systemUptime < deadline else { return }
+        guard !completed, ProcessInfo.processInfo.systemUptime < deadline else { return false }
         accepted = body(); completed = true; ready.signal()
+        return true
     }
     func wait() -> Bool {
         let remaining = max(0, deadline - ProcessInfo.processInfo.systemUptime)

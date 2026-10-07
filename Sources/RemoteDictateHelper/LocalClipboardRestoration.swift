@@ -80,10 +80,11 @@ final class LocalClipboardRestoration {
         fileprivate let board: NSPasteboard
         fileprivate let revision: Int
         fileprivate let snapshot: LocalClipboardSnapshot
+        fileprivate let access: ClipboardAccess
 
-        func validate() throws {
+        @MainActor func validate() throws {
             guard board.changeCount == revision else { throw LocalClipboardError.changed }
-            guard try LocalClipboardSnapshot.capture(board) == snapshot,
+            guard try access.read(board).snapshot == snapshot,
                   board.changeCount == revision else { throw LocalClipboardError.changed }
         }
     }
@@ -113,6 +114,7 @@ final class LocalClipboardRestoration {
     }
 
     private let board: NSPasteboard
+    private let access: ClipboardAccess
     private let now: () -> TimeInterval
     private let onOutcome: (Outcome, Receipt?) -> Void
     private var pending: (session: Session, deadline: TimeInterval)?
@@ -121,10 +123,12 @@ final class LocalClipboardRestoration {
 
     init(
         board: NSPasteboard = .general,
+        access: ClipboardAccess = .shared,
         now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         onOutcome: @escaping (Outcome, Receipt?) -> Void = { _, _ in }
     ) {
         self.board = board
+        self.access = access
         self.now = now
         self.onOutcome = onOutcome
     }
@@ -138,7 +142,7 @@ final class LocalClipboardRestoration {
 
     func captureReplayBaseline(releasedRevision: Int, session: Session) throws -> ReplayBaseline {
         guard board.changeCount == releasedRevision else { throw LocalClipboardError.changed }
-        let snapshot = try LocalClipboardSnapshot.capture(board)
+        let snapshot = try access.read(board).snapshot
         guard board.changeCount == releasedRevision else { throw LocalClipboardError.changed }
         return ReplayBaseline(sessionID: session.id, revision: releasedRevision, snapshot: snapshot)
     }
@@ -150,13 +154,14 @@ final class LocalClipboardRestoration {
         let items = try snapshot.materialize()
         guard baseline.sessionID == session.id,
               board.changeCount == baseline.revision,
-              try LocalClipboardSnapshot.capture(board) == baseline.snapshot,
+              try access.read(board).snapshot == baseline.snapshot,
               board.changeCount == baseline.revision else { throw LocalClipboardError.changed }
         session.ownedRevision = board.clearContents()
         session.ownedText = nil
         guard board.writeObjects(items) else { throw LocalClipboardError.writeFailed }
         session.ownedText = text
-        guard ownsClipboard(session), try LocalClipboardSnapshot.capture(board) == snapshot,
+        access.remember(board, revision: session.ownedRevision!, snapshot: snapshot, text: text)
+        guard ownsClipboard(session), try access.read(board).snapshot == snapshot,
               ownsClipboard(session) else { throw LocalClipboardError.changed }
     }
 
@@ -205,7 +210,8 @@ final class LocalClipboardRestoration {
                 guard board.writeObjects(items) else { throw LocalClipboardError.writeFailed }
             }
             guard board.changeCount == revision else { onOutcome(.skippedChanged, nil); return }
-            let receipt = Receipt(board: board, revision: revision, snapshot: session.original)
+            access.remember(board, revision: revision, snapshot: session.original, text: nil)
+            let receipt = Receipt(board: board, revision: revision, snapshot: session.original, access: access)
             try receipt.validate()
             onOutcome(.restored, receipt)
         } catch LocalClipboardError.changed {
@@ -215,10 +221,17 @@ final class LocalClipboardRestoration {
         }
     }
 
+    func validateOwned(_ session: Session) throws {
+        guard ownsClipboard(session) else { throw LocalClipboardError.changed }
+    }
+
     private func ownsClipboard(_ session: Session) -> Bool {
         guard let revision = session.ownedRevision, board.changeCount == revision else { return false }
-        let matches = session.ownedText.map { board.string(forType: .string) == $0 }
-            ?? (board.pasteboardItems?.isEmpty ?? true)
+        if session.ownedText == nil {
+            return (board.types?.isEmpty ?? true) && board.changeCount == revision
+        }
+        guard let value = try? access.read(board) else { return false }
+        let matches = value.text == session.ownedText
         return matches && board.changeCount == revision
     }
 }

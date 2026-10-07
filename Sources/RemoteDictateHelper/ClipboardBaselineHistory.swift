@@ -20,11 +20,13 @@ struct ClipboardBaselineHistory {
         self.maximumEntries = maximumEntries
     }
 
-    mutating func sample(_ board: NSPasteboard) throws {
+    @MainActor mutating func sample(_ board: NSPasteboard, access: ClipboardAccess = .shared) throws {
         let revision = board.changeCount
         guard entries.last?.revision != revision else { return }
-        let snapshot = try LocalClipboardSnapshot.capture(board, maximumBytes: maximumBytes)
-        let text = board.string(forType: .string)
+        let value = try access.read(board)
+        let snapshot = value.snapshot
+        let text = value.text
+        guard snapshot.items.flatMap({ $0 }).reduce(0, { $0 + $1.data.count }) <= maximumBytes else { throw LocalClipboardError.tooLarge }
         guard board.changeCount == revision else { throw LocalClipboardError.changed }
         entries.append(Entry(revision: revision, snapshot: snapshot, text: text))
         while entries.count > maximumEntries || entries.reduce(0, { $0 + $1.byteCount }) > maximumBytes {

@@ -44,6 +44,10 @@ final class DictationPasteMonitor {
         var reportedWaitSecond = -1
     }
     private let board: NSPasteboard
+    private let access: ClipboardAccess
+    private var sampleTask: Task<Void, Never>?
+    private var captureTask: Task<Void, Never>?
+    private var generation = 0
     private let targetPID: () -> pid_t?
     private let isAvailable: () -> Bool
     private let now: () -> TimeInterval
@@ -65,12 +69,13 @@ final class DictationPasteMonitor {
     private var suppressedPID: pid_t?
     private var suppressedAt: TimeInterval = 0
 
-    init(board: NSPasteboard = .general, targetPID: @escaping () -> pid_t?,
+    init(board: NSPasteboard = .general, access: ClipboardAccess = .shared, targetPID: @escaping () -> pid_t?,
          isAvailable: @escaping () -> Bool, sources: [DictationSource] = AppSettings().sources,
          now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          onCaptured: @escaping (UUID) -> Void, onError: @escaping (Error) -> Void,
          report: @escaping (String) -> Void = { _ in },
          diagnostic: @escaping (String) -> Void = { DiagnosticLog.shared.record($0) }) {
+        self.access = access
         self.board = board; self.targetPID = targetPID; self.isAvailable = isAvailable
         self.sources = sources; self.now = now
         self.onCaptured = onCaptured; self.onError = onError; self.report = report
@@ -83,8 +88,7 @@ final class DictationPasteMonitor {
         let next = PasteEventFilter(sources: sources, onEvent: { [weak self] input, decision in
             Task { @MainActor in
                 guard let self, self.filter != nil else { return }
-                if let decision { decision.evaluate { self.observe(input) } }
-                else { _ = self.observe(input) }
+                self.handle(input, decision: decision)
             }
         }, onDisabled: { [weak self] in
             Task { @MainActor in self?.filterDisabled() }
@@ -93,27 +97,112 @@ final class DictationPasteMonitor {
         filter = next
         report("active paste filter installed; no Backspace")
         let timer = Timer(timeInterval: 0.02, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.sample() }
+            MainActor.assumeIsolated { self?.scheduleSample() }
         }
         self.timer = timer
         RunLoop.main.add(timer, forMode: .common)
-        sample()
+        scheduleSample()
     }
 
     func stop() {
         if let pending { trace(pending, "stop; no replay") }
+        generation += 1
+        sampleTask?.cancel(); sampleTask = nil
+        captureTask?.cancel(); captureTask = nil
         timer?.invalidate(); timer = nil
         filter?.stop(); filter = nil
         pending = nil; suppressedPID = nil; history.clear(); sampledTargetPID = nil
     }
 
     func filterDisabled() {
+        captureTask?.cancel(); captureTask = nil
         filterHealthy = false; suppressedPID = nil
         if pending != nil { pending?.failure = DictationCaptureError.filterDisabled }
         // Never silently enable deletion or re-enable an unhealthy filter.
         Task { @MainActor [weak self] in
             self?.report("active paste filter disabled by macOS; input passes through")
             self?.onError(DictationCaptureError.filterDisabled)
+        }
+    }
+
+    /// The timer never calls an external data provider. One asynchronous sample
+    /// at a time; failed revisions are not retried every 20 ms.
+    func scheduleSample() {
+        if suppressedPID != nil, now() - suppressedAt > 5 { suppressedPID = nil }
+        guard pending == nil, captureTask == nil else { return }
+        guard isAvailable(), let target = targetPID() else {
+            sampleTask?.cancel(); sampleTask = nil
+            generation += 1
+            history.clear(); sampledTargetPID = nil; return
+        }
+        if sampledTargetPID != target {
+            sampleTask?.cancel(); sampleTask = nil; generation += 1
+            history.clear(); sampledTargetPID = target
+        }
+        let revision = board.changeCount
+        guard sampleTask == nil, failedSampleRevision != revision,
+              history.entries.last?.revision != revision else { return }
+        let token = generation
+        diagnostic("clipboard.read_begin stage=baseline revision=\(revision) targetPID=\(target)")
+        sampleTask = Task { [weak self] in
+            guard let self else { return }
+            defer { if generation == token { sampleTask = nil } }
+            do {
+                try await access.prepare(board)
+                try Task.checkCancellation()
+                guard generation == token, pending == nil, targetPID() == target, isAvailable(),
+                      board.changeCount == revision else { return }
+                sample()
+                diagnostic("clipboard.read_ready stage=baseline revision=\(revision)")
+            } catch is CancellationError { }
+            catch {
+                guard generation == token, board.changeCount == revision else { return }
+                history.clear(); failedSampleRevision = revision
+                report("baseline unavailable revision=\(revision): \(error)")
+                diagnostic("clipboard.read_failed stage=baseline revision=\(revision) targetPID=\(target) error=\(error)")
+            }
+        }
+    }
+
+    /// Prepare outside the decision lock. Only the short, in-memory transaction
+    /// commit runs inside it. An expired decision must never suppress or replay.
+    func handle(_ input: Event, decision: PasteCaptureDecision?) {
+        guard let decision else { _ = observe(input); return }
+        guard captureTask == nil else { decision.evaluate { false }; return }
+        guard pending == nil, filterHealthy, isAvailable(),
+              let target = targetPID(), sampledTargetPID == target,
+              history.preceding(board.changeCount).last != nil else {
+            decision.evaluate { self.observe(input) }; return
+        }
+        let revision = board.changeCount, token = generation
+        sampleTask?.cancel(); sampleTask = nil
+        diagnostic("clipboard.read_begin stage=candidate revision=\(revision) targetPID=\(target)")
+        captureTask = Task { [weak self] in
+            guard let self else { return }
+            defer { if generation == token { captureTask = nil } }
+            do {
+                try await access.prepare(board, timeout: min(0.06, decision.remaining))
+                try Task.checkCancellation()
+                guard generation == token, targetPID() == target, board.changeCount == revision,
+                      input.sequence == nil || filter == nil || filter?.inputSequence == input.sequence else { return }
+                let baseline = history.preceding(revision).last
+                guard let baseline else { throw DictationCaptureError.originalUnknown }
+                // Copy/HTML transport preparation also stays outside the lock.
+                let payload = try CapturedClipboard.read(from: board, after: baseline.revision, access: access)
+                if !decision.evaluate({ self.observe(input, preparedRead: { payload }) }) {
+                    lastHandledRevision = revision
+                }
+                diagnostic("clipboard.read_ready stage=candidate revision=\(revision) decisionExpired=\(decision.remaining == 0)")
+            } catch is CancellationError { }
+            catch {
+                guard generation == token else { return }
+                // No fallback, retry or late publication when the source's
+                // original key has already been allowed through.
+                diagnostic("clipboard.read_failed stage=candidate revision=\(revision) error=\(error) originalInput=allowed")
+                lastHandledRevision = revision; history.clear()
+                decision.evaluate { false }
+                onError(error)
+            }
         }
     }
 
@@ -125,7 +214,7 @@ final class DictationPasteMonitor {
         }
         if sampledTargetPID != target { history.clear(); sampledTargetPID = target }
         guard failedSampleRevision != board.changeCount else { return }
-        do { try history.sample(board) }
+        do { try history.sample(board, access: access) }
         catch {
             history.clear(); failedSampleRevision = board.changeCount
             report("baseline unavailable revision=\(board.changeCount)")
@@ -136,7 +225,7 @@ final class DictationPasteMonitor {
     /// Return true only when the caller must remove this event from the stream.
     /// Native tests use event metadata and a named board, never real input.
     @discardableResult
-    func observe(_ event: Event) -> Bool {
+    func observe(_ event: Event, preparedRead: (() throws -> CapturedClipboard?)? = nil) -> Bool {
         if event.pid == ProcessInfo.processInfo.processIdentifier { return false }
         var remove = false
         if event.fromDictation, event.pid == suppressedPID, event.key == 9 {
@@ -167,7 +256,8 @@ final class DictationPasteMonitor {
         do {
             let candidates = history.preceding(revision)
             guard let baseline = candidates.last, sampledTargetPID == target else { throw DictationCaptureError.originalUnknown }
-            guard let payload = try CapturedClipboard.read(from: board, after: baseline.revision) else {
+            let read = preparedRead ?? { try CapturedClipboard.read(from: self.board, after: baseline.revision, access: self.access) }
+            guard let payload = try read() else {
                 report("empty result skipped"); history.clear(); return remove
             }
             // Keep the active callback short. There is no menu/AX work or input
@@ -204,8 +294,9 @@ final class DictationPasteMonitor {
         if current.keyUp {
             let original: ClipboardBaselineHistory.Entry?
             if revision != current.payload.revision {
-                let returned = try LocalClipboardSnapshot.capture(board)
-                let text = board.string(forType: .string)
+                let value = try access.read(board)
+                let returned = value.snapshot
+                let text = value.text
                 guard board.changeCount == revision else { throw LocalClipboardError.changed }
                 do {
                     original = try ClipboardBaselineHistory.resolve(current.candidates, returned: returned, text: text)
@@ -235,6 +326,14 @@ final class DictationPasteMonitor {
     func waitForRelease(_ id: UUID) async throws -> Result {
         while true {
             try Task.checkCancellation()
+            try validate(id)
+            if let current = pending, current.keyUp, board.changeCount != current.payload.revision {
+                let revision = board.changeCount
+                diagnostic("op=\(id) clipboard.read_begin stage=source-return revision=\(revision)")
+                try await access.prepare(board)
+                try validate(id)
+                diagnostic("op=\(id) clipboard.read_ready stage=source-return revision=\(revision)")
+            }
             if let result = try completeIfReleased(id) { return result }
             try await Task.sleep(for: .milliseconds(10))
         }

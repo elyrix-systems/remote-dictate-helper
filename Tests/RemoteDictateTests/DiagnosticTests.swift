@@ -39,7 +39,7 @@ func testCaptureCancellationDiagnostics() throws {
         var time: TimeInterval = 0
         var id: UUID?
         var lines: [String] = []
-        let monitor = DictationPasteMonitor(board: board, targetPID: { target }, isAvailable: { true },
+        let monitor = DictationPasteMonitor(board: board, access: eagerTestClipboardAccess(), targetPID: { target }, isAvailable: { true },
             now: { time }, onCaptured: { id = $0 }, onError: { fail("\($0)") }, diagnostic: { lines.append($0) })
         func copy(_ value: String) { board.clearContents(); expectTrue(board.setString(value, forType: .string)) }
         copy("SECRET-ORIGINAL"); monitor.sample(); copy("SECRET-TRANSCRIPT")

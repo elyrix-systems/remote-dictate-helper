@@ -32,6 +32,9 @@ progress; the app accepts only one transfer at a time.
 - `source_v_up_timeout`: the intercepted source never supplied its paired release.
 - `returned_clipboard_unmatched`: the returned revision did not match a saved
   original. Candidate revisions and returned format identifiers are recorded.
+- `clipboard.read_begin` / `read_ready` / `read_failed`: baseline, candidate or
+  source-return stage, revision and context. A provider timeout abandons the read;
+  it cannot schedule late input. Payload reads run only in an owned child process.
 - Windows App additionally records native paste stages and distinct revision,
   physical modifier, foreground and input-sequence cancellation reasons.
 - The local Windows clipboard-read candidate records `clipboard-read-start` and
@@ -89,3 +92,17 @@ component tests cover refusal, cancellation, timing bounds and unchanged formats
 None of this proves that a remote Windows clipboard is ready. Physical repeated
 dictation and post-sleep trials are still required; this experiment has not been
 published as a release.
+
+## Local provider-isolation candidate
+
+The next candidate isolates payload reads for both clients. Baseline and returned
+clipboard reads are asynchronous with a 250 ms failure deadline; candidate capture
+uses up to 60 ms within the existing 80 ms decision deadline. These are upper
+bounds, not fixed waits. Exact prepared snapshots and revision guards replace
+synchronous provider calls during replay and restoration. See the
+[architecture](architecture.md#clipboard-provider-isolation) for proof and limits.
+
+A physical Windows trial of the preceding materialization-only candidate still
+inserted old remote text despite a fast successful local read. That experiment
+does not establish a fix for stale RDP clipboard data. Isolation addresses helper
+responsiveness first; no remote acknowledgement or automatic paste retry is added.

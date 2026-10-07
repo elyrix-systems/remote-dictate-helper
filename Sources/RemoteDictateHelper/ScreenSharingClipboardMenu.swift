@@ -30,6 +30,7 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
     private let clipboardText: String
     private let initialClipboardChangeCount: Int
     private let writeTranscript: (String) throws -> Void
+    private let validateTranscript: () throws -> Void
     private var preparedTranscript = false
     private var preparedRevision: Int?
     private let pasteboard = NSPasteboard.general
@@ -43,6 +44,7 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
         expectedWindow: AXUIElement? = nil,
         input: ExplicitPasteShortcut = ExplicitPasteShortcut(),
         writeTranscript: @escaping (String) throws -> Void,
+        validateTranscript: @escaping () throws -> Void,
         trace: @escaping (String) -> Void = { _ in }
     ) throws {
         guard target.bundleIdentifier == "com.apple.ScreenSharing", target.processIdentifier > 0 else {
@@ -70,6 +72,7 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
         clipboardText = text
         initialClipboardChangeCount = count
         self.writeTranscript = writeTranscript
+        self.validateTranscript = validateTranscript
         // Resolve both commands before allowing any preference mutation.
         _ = try menuItems()
     }
@@ -105,10 +108,10 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
             return
         }
         guard count == (preparedRevision ?? initialClipboardChangeCount),
-              pasteboard.string(forType: .string) == clipboardText,
               pasteboard.changeCount == count else {
             throw ScreenSharingClipboardMenuError.clipboardChanged
         }
+        try validateTranscript()
     }
 
     func prepareClipboard() throws {

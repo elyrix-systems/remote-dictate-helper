@@ -1,8 +1,9 @@
 # Architecture
 
 Remote Dictate Helper runs entirely on the local Mac. It captures an accepted
-clipboard paste, transfers it through Apple Screen Sharing, pastes once and
-restores the original clipboard. There is no database, donor process, microphone
+clipboard paste and routes it to Apple Screen Sharing or Microsoft Windows App.
+Screen Sharing transfers a snapshot and restores the original clipboard; Windows
+App repairs native paste input while RDP and the dictation app own the clipboard. There is no database, donor process, microphone
 capture, recording shortcut detector or fallback character deletion.
 
 The SwiftPM core library retains its 1.0 public interfaces for source compatibility.
@@ -10,7 +11,7 @@ Retired convenience methods live in `LegacyCoreCompatibility.swift`; the helper
 does not use them. Compatibility tests cover the old entry points separately
 from the production transfer and restoration tests.
 
-## Transaction
+## Apple Screen Sharing transaction
 
 `idle → captured → source released → clipboard sent → paste posted → restored`
 
@@ -51,10 +52,40 @@ Successful input allows restoration after 200 ms; partial/failed input retains
 the five-second protection interval. Those allowances do not establish remote
 consumption. Revision checks, including equal-text copies, protect newer content.
 
+## Windows App transaction
+
+`idle → captured → modifiers released → one native paste → idle`
+
+`WindowsAppPasteMonitor` accepts the same configured source identities only when
+`com.microsoft.rdc.macos` is frontmost. It reads the pasteboard revision counter,
+not payloads, and never writes to the pasteboard or invokes Screen Sharing menus.
+The source's `clipboardReturn` policy applies only to Screen Sharing. In Windows
+App the source must keep its current result available until native paste finishes.
+
+A separate instance of `PasteEventFilter` pairs the accepted V-down/V-up and
+tracks physical modifier changes. The existing Screen Sharing filter's event
+scope is unchanged. Each adapter refuses capture while the other is busy. Source
+settings apply to both; local/manual/unselected input remains unaffected.
+
+`WindowsAppPasteShortcut` sends four events from one private source: Command
+flagsChanged, V-down, V-up, Command flagsChanged release. It preserves left-Command
+and non-coalesced flags, with 25 ms between events, as in the accepted local trial.
+This spacing is not a transcription wait or proof of clipboard delivery. Only the
+native API's posted events are observed; the remote application provides no receipt.
+
+Replay waits for the existing physical-modifier readiness guard, validating target,
+focused window, input sequence and the captured clipboard revision throughout.
+Physical modifiers released during that wait are allowed. A new physical modifier
+change after readiness cancels replay. Cancellation, permission loss, disabled
+filter and Quit stop the task and release owned keys without retries. A completed
+or failed revision is not automatically replayed. New dictations use fresh revisions.
+No diagnostic sampler, expiry, per-key log or transcript copy is shipped.
+
 ## Integration evidence and limits
 
 | Risky assumption | Evidence | Scope |
 | --- | --- | --- |
+| A complete native modifier sequence fixes the observed Windows App `v` | Physical comparison of Flow/keyboard events and accepted local Flow trial | Windows App 11.4.3 on the tested Mac; not all RDP endpoints/sources |
 | An active event tap can suppress an event | Apple's Core Graphics callback contract | External API proof only |
 | Filtering the source paste prevents the leaked `v` | Physical trials with Flow, superwhisper and Valis | Tested local Mac and Screen Sharing setup |
 | Source clipboard return can identify the original | Snapshot/revision regression tests and physical clipboard checks | Component + local integration proof |

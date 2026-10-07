@@ -10,6 +10,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     private let log = OperationalLog(destination: defaultLogURL())
     private var settings = AppSettings()
     private var monitor: DictationPasteMonitor?
+    private var windowsMonitor: WindowsAppPasteMonitor?
     private var runningTask: Task<Void, Never>?
     private var operationGeneration = 0
     private var settingsWindowController: SettingsWindowController?
@@ -24,6 +25,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     private lazy var launchAtLogin = LaunchAtLogin(report: { [weak self] in self?.appendLog("login item \($0)") })
     private var busy: Bool {
         runningTask != nil || sharedClipboardLease != nil || clipboardRestoration.hasPendingRestore || clipboardSession != nil
+            || windowsMonitor?.isBusy == true
     }
     private var canAcceptPaste: Bool { !quitAfterClipboardRestore && !busy }
     private lazy var clipboardRestoration = LocalClipboardRestoration(onOutcome: { [weak self] outcome, receipt in
@@ -66,7 +68,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
             openSettings()
         }
     }
-    func applicationWillTerminate(_ notification: Notification) { runningTask?.cancel(); monitor?.stop() }
+    func applicationWillTerminate(_ notification: Notification) { runningTask?.cancel(); monitor?.stop(); windowsMonitor?.stop() }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         cancelCurrentOperation()
         monitor?.stop(); monitor = nil
@@ -84,7 +86,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         menu.autoenablesItems = false
         statusMenuItem.isEnabled = false
         menu.addItem(statusMenuItem); menu.addItem(.separator())
-        let scope = NSMenuItem(title: "Apple Screen Sharing only", action: nil, keyEquivalent: "")
+        let scope = NSMenuItem(title: "Apple Screen Sharing & Windows App", action: nil, keyEquivalent: "")
         scope.isEnabled = false; menu.addItem(scope)
         for (title, action, key) in [
             ("Settings…", #selector(openSettings), ","),
@@ -106,11 +108,13 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         operationGeneration += 1
         runningTask?.cancel(); runningTask = nil
         monitor?.stop(); monitor = nil
+        windowsMonitor?.stop(); windowsMonitor = nil
         contextCancelled = true
         finishClipboardSession()
     }
     private func configureMonitor() {
         monitor?.stop(); monitor = nil
+        windowsMonitor?.stop(); windowsMonitor = nil
         guard !quitAfterClipboardRestore else { return }
         let next = DictationPasteMonitor(targetPID: {
             let app = NSWorkspace.shared.frontmostApplication
@@ -127,6 +131,23 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         }, report: { [weak self] in self?.appendLog("capture \($0)") })
         do { try next.start(); monitor = next }
         catch { lastError = String(describing: error); setStatus("Error: \(error)"); appendLog("monitor start error=\(error)") }
+        let windows = WindowsAppPasteMonitor(sources: settings.sources,
+            isAvailable: { [weak self] in self?.canAcceptPaste ?? false },
+            onCaptured: { [weak self] in
+                self?.lastError = nil; self?.setStatus("Captured: preparing Windows App paste")
+            }, onCompleted: { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success: self.setStatus("Done: paste sent to Windows App")
+                case .failure(is CancellationError): self.setStatus("Idle")
+                case .failure(WindowsAppPasteError.targetChanged), .failure(WindowsAppPasteError.inputChanged):
+                    self.setStatus("Idle")
+                case let .failure(error):
+                    self.lastError = String(describing: error); self.setStatus("Error: \(error)")
+                }
+            }, report: { [weak self] in self?.appendLog($0) })
+        do { try windows.start(); windowsMonitor = windows }
+        catch { lastError = String(describing: error); setStatus("Error: \(error)"); appendLog("Windows App monitor start error=\(error)") }
     }
     private func startPaste(_ id: UUID, monitor: DictationPasteMonitor) {
         guard canAcceptPaste else { monitor.discard(id); return }
@@ -202,8 +223,9 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
                     // A revoked grant can leave an existing event tap unusable.
                     // Recreate it when Settings observes a grant, as first use did.
                     self.lastError = nil; self.configureMonitor()
-                    if self.monitor != nil { self.setStatus("Ready") }
-                    return self.monitor != nil
+                    let ready = self.monitor != nil && self.windowsMonitor != nil
+                    if ready { self.setStatus("Ready") }
+                    return ready
                 })
         }
         if settingsWindowController?.window?.isVisible != true {

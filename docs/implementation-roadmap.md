@@ -1,7 +1,7 @@
 # Project scope
 
 The current product is a source-built local macOS menu bar app for clipboard
-paste interception in Apple Screen Sharing. The maintained behavior is documented
+paste interception in Apple Screen Sharing and Microsoft Windows App. The maintained behavior is documented
 in [architecture.md](architecture.md) and [test-plan.md](test-plan.md).
 
 Keep future work small and independently testable:

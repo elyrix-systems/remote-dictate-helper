@@ -43,6 +43,7 @@ final class PasteEventFilter: @unchecked Sendable {
     private let sources: [DictationSource]
     private let onEvent: @Sendable (PasteInputEvent, PasteCaptureDecision?) -> Void
     private let onDisabled: @Sendable () -> Void
+    private let trackPhysicalModifiers: Bool
     private let lock = NSLock()
     private let ready = DispatchSemaphore(value: 0)
     private var loop: CFRunLoop?
@@ -51,11 +52,13 @@ final class PasteEventFilter: @unchecked Sendable {
     private var suppressedPID: pid_t?
     private var suppressedAt: TimeInterval = 0
     private var sequence: UInt64 = 0
+    private var modifiers: UInt64 = 0
     private let ownPID = ProcessInfo.processInfo.processIdentifier
 
     init(sources: [DictationSource], onEvent: @escaping @Sendable (PasteInputEvent, PasteCaptureDecision?) -> Void,
-         onDisabled: @escaping @Sendable () -> Void) {
+         onDisabled: @escaping @Sendable () -> Void, trackPhysicalModifiers: Bool = false) {
         self.sources = sources; self.onEvent = onEvent; self.onDisabled = onDisabled
+        self.trackPhysicalModifiers = trackPhysicalModifiers
     }
     func start() -> Bool {
         let worker = Thread { [self] in run() }
@@ -71,8 +74,12 @@ final class PasteEventFilter: @unchecked Sendable {
     var inputSequence: UInt64 {
         lock.lock(); defer { lock.unlock() }; return sequence
     }
+    var physicalModifierSequence: UInt64 {
+        lock.lock(); defer { lock.unlock() }; return modifiers
+    }
     private func run() {
-        let types: [CGEventType] = [.keyDown, .keyUp, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        var types: [CGEventType] = [.keyDown, .keyUp, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        if trackPhysicalModifiers { types.append(.flagsChanged) }
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << $1.rawValue) }
         let callback: CGEventTapCallBack = { _, type, event, context in
             guard let context else { return Unmanaged.passUnretained(event) }
@@ -95,7 +102,7 @@ final class PasteEventFilter: @unchecked Sendable {
         CFRunLoopRemoveSource(current, source, .commonModes); CFMachPortInvalidate(tap)
         lock.lock(); port = nil; loop = nil; lock.unlock()
     }
-    private func handle(type: CGEventType, event: CGEvent) -> Bool {
+    func handle(type: CGEventType, event: CGEvent) -> Bool {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             lock.lock(); suppressedPID = nil; lock.unlock()
             onDisabled(); return false
@@ -103,6 +110,14 @@ final class PasteEventFilter: @unchecked Sendable {
         lock.lock(); let inactive = stopped; lock.unlock()
         guard !inactive else { return false }
         let pid = pid_t(event.getIntegerValueField(.eventSourceUnixProcessID))
+        if type == .flagsChanged {
+            // Pass every modifier through. Only the physical/system source
+            // advances this guard; our private replay must not cancel itself.
+            if trackPhysicalModifiers && pid == 0 {
+                lock.lock(); modifiers &+= 1; lock.unlock()
+            }
+            return false
+        }
         guard pid != ownPID else { return false }
         let identifier = pid > 0 ? NSRunningApplication(processIdentifier: pid)?.bundleIdentifier : nil
         let source = sources.first { $0.matches(identifier) }

@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.1.0 — 2026-10-07
+
+- Add Microsoft Windows App (formerly Microsoft Remote Desktop) as a supported
+  remote client on macOS. Intercept a selected dictation app’s synthetic paste
+  and send one complete native Command+V, avoiding the stray `v` observed with Flow.
+- Preserve the existing Apple Screen Sharing transfer and clipboard restoration.
+  Windows App uses RDP clipboard redirection; the helper does not rewrite its
+  clipboard or change sharing settings. The dictation app owns restoration.
+- Handle consecutive dictations, wait for physical modifier release while the
+  clipboard is current, and cancel on focus, window, input or revision changes.
+  Release owned keys on cancellation, disabled input monitoring and Quit. No
+  Backspace, queued replay, automatic retry or diagnostic expiry is included.
+- Update Settings, menu scope, installation notes and compatibility documentation.
+  Show enabled launch-at-login status in green, matching Accessibility.
+  Add native regression tests for the Windows App input path and its guards.
+
+Validation: the owner accepted the local Windows App/Wispr Flow integration and
+reported continued correct operation in Apple Screen Sharing. Automated tests
+use mocked input; they do not establish universal RDP/server or dictation-app
+compatibility. Downloads remain ad-hoc signed and not Apple notarized.
+
 ## 1.0.3 — 2026-10-06
 
 - Save and apply dictation-app additions and removals immediately. Remove Save

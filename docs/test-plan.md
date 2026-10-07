@@ -20,6 +20,7 @@ The custom native runner works with Command Line Tools without XCTest.
 | Interception | Manual/local/unknown input passes through; accepted down/up pairing; slow capture and disabled filter fail safely; no deletion. |
 | Clipboard | Full-format original restoration, UTF-8 HTML transport, empty originals, clipboard ownership, newer/equal-text copies and restoration deadlines. |
 | Input | Exactly one private Command+V; permission/target/modifier refusal; mid-sequence release; HID residue guards and no retry. |
+| Windows App | Consecutive source pastes, busy and revision guards, manual/local/self input exclusion, complete private Command+V flags/types, Fn release, target/window/input/clipboard cancellation, balanced release on Quit and disabled filter. No clipboard writes or real keystrokes. |
 | Completion | Deferred cleanup readiness, single completion attempt, busy refusal and errors. |
 | Transfer | Clipboard menu order, exact setting transitions, failure recovery, original Send before sharing-on and receipt validation. |
 | Core compatibility | Existing 1.0 library calls and conformers still compile, including fixed-clipboard validation and default preparation. |
@@ -77,6 +78,28 @@ Use synthetic text only. Check ordinary clipboard sharing first.
 Record app/OS versions, source clipboard settings, visible result, status and
 whether each step actually ran. Never claim remote receipt based only on a local
 log or replace physical integration checks with mocked events.
+
+## Windows App physical checks
+
+Requires the local Apple-silicon Mac, Accessibility, the native **Microsoft
+Windows App for macOS**, an RDP connection and a remote Windows text field.
+First verify ordinary local copy and physical Command+V/Control+V. Use synthetic
+markers and select the dictation app in Settings; do not change administrator policy.
+
+1. Copy a local original marker. Leave `START|` in the remote field and dictate
+   three separate phrases without manual paste. Each must arrive once, without
+   a leading `v` or deleted prefix. Test the same dictated text in a new operation.
+2. Paste locally after completion and check the dictation app's configured
+   restoration. The helper does not write the clipboard in Windows App; record
+   the source setting and actual result, rather than attributing restoration to it.
+3. Check hold/release and toggle dictation, including returning to the remote
+   field before stopping. The physical modifier must be released before replay.
+4. Change the target/window, click/type or copy new content during replay. Expect
+   cancellation and no deferred insertion. Check local dictation/manual paste and
+   repeat the Apple Screen Sharing baseline after switching clients.
+5. Test repeated operations and Quit after installation. Record any source warning
+   separately from remote text arrival. Test each source/client combination before
+   claiming compatibility; Flow is the physically verified Windows App source.
 
 ## Validated baseline
 

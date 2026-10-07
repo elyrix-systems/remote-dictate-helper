@@ -21,7 +21,7 @@ final class DictationSourcesView: NSView, NSTableViewDataSource, NSTableViewDele
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         table.dataSource = self; table.delegate = self
         table.allowsEmptySelection = true; table.allowsMultipleSelection = false
-        table.setAccessibilityLabel("Dictation apps handled in Apple Screen Sharing")
+        table.setAccessibilityLabel("Dictation apps handled in Apple Screen Sharing and Windows App")
         scroll.documentView = table
         let add = NSButton(title: "Add App…", target: self, action: #selector(addApp))
         remove.target = self; remove.action = #selector(removeApp)

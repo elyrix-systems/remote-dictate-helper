@@ -12,7 +12,7 @@ an app list with local application icons. Adding/removing an app saves immediate
 close Settings when finished. Clipboard coordination is automatic;
 there is no separate setup dialog or shared-clipboard checkbox. Permissions cannot be pre-granted
 by an installer. No helper or microphone
-configuration is installed on the remote Mac.
+configuration is installed on the remote computer.
 
 The installed app automatically registers itself to launch at login on first use,
 using Apple's main-app login service. Settings shows its current status and opens

@@ -24,6 +24,7 @@ swiftc -swift-version 6 -parse-as-library -I "$test_module_dir" \
   "$runtime/DeferredClipboardCompletion.swift" "$runtime/AccessibilityPermission.swift" \
   "$runtime/OperationalLog.swift" "$runtime/LaunchAtLogin.swift" "$runtime/DictationSourceSettings.swift" \
   "$runtime/ExplicitPasteShortcut.swift" \
+  "$runtime/WindowsAppPasteShortcut.swift" "$runtime/WindowsAppPasteMonitor.swift" \
   "$runtime/GuardedPaste.swift" "$runtime/ScreenSharingClipboardMenu.swift" \
   "${core_objects[@]}" -o "$repo_root/.build/remote-dictate-tests"
 "$repo_root/.build/remote-dictate-tests"

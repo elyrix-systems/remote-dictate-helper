@@ -29,8 +29,8 @@ workflow runs.
 
 ## Behavior to preserve
 
-- Handle configured dictation apps only in active Apple Screen Sharing.
-- Capture actual clipboard content, never transcript databases or donor apps.
+- Handle configured dictation apps only in active Apple Screen Sharing or Windows App.
+- Screen Sharing captures actual clipboard content; Windows App only repairs input and leaves clipboard redirection/restoration to RDP and the dictation app. Never use transcript databases or donor apps.
 - Intercept only an accepted source paste; allow manual and local input through.
 - Paste once, without Backspace, retries or replay after focus/caret changes.
 - Preserve the original clipboard formats; never overwrite a newer copy.

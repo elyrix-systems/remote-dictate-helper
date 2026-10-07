@@ -130,3 +130,32 @@ native alert dismissal and certificate-signed update checks above. The candidate
 still displayed 1.0.2; the 1.0.3 release preparation changes the version metadata
 and release notes without changing its runtime code. This acceptance concerns
 the local candidate, not a browser-downloaded ad-hoc DMG on a clean account.
+
+## Windows App acceptance: 1.1.0 integration
+
+On 2026-10-07, the owner tested Wispr Flow on the local Apple-silicon Mac running
+macOS 26.6.2, connected through Microsoft Windows App 11.4.3. Ordinary physical
+Command+V and Control+V worked. Flow's synthetic paste produced only `v`; a
+physical paste then inserted the current transcript.
+
+A bounded metadata-only observation distinguished the sequences: Flow emitted
+V-down/up with generic Command flags, while the physical sequence included
+left-Command flagsChanged events and device/non-coalesced flags. A one-paste
+trial replaced the source events with a complete private native sequence, spaced
+25 ms apart. The owner confirmed successful remote text insertion. A second
+paste in that first trial passed through because it was intentionally single-use.
+
+The subsequent repeated trial kept the same sender, added modifier-release
+waiting with revision/context guards, and never wrote clipboard contents. The
+owner reported successful insertion, then confirmed that operation was working
+correctly in both Windows App and Apple Screen Sharing and authorized tests, PR
+and release. A transient report of remote unresponsiveness was followed by
+confirmation that the transcript had arrived; its cause was not established.
+
+This is local integration evidence for Flow and this Windows App setup. The
+owner's overall acceptance did not separately enumerate all clipboard-format,
+warning, server or source-app cases. Remote receipt is established by the owner,
+not by local key logs. Production regression tests protect the native sequence,
+repeated admission, context/revision cancellation, physical modifiers and key
+release during shutdown. The release removes temporary logging and time limits;
+no diagnostic logs or real transcript contents are committed.

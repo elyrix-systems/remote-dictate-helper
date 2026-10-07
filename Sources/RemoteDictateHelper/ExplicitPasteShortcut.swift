@@ -7,7 +7,7 @@ enum ExplicitPasteShortcutError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .permissionNeeded: "Accessibility is not enabled for Remote Dictate Helper."
-        case .targetChanged: "Screen Sharing lost focus; paste shortcut stopped."
+        case .targetChanged: "The remote window lost focus; paste shortcut stopped."
         case let .modifiersHeld(session, hardware):
             "Input modifier state is busy; paste not sent. Session: \(Self.describe(session)); HID: \(Self.describe(hardware))."
         case .eventCreationFailed: "Could not create paste shortcut events."

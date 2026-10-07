@@ -92,7 +92,7 @@ No diagnostic sampler, expiry, per-key log or transcript copy is shipped.
 
 | Risky assumption | Evidence | Scope |
 | --- | --- | --- |
-| A complete native modifier sequence fixes the observed Windows App `v` | Physical comparison of Flow/keyboard events and accepted local Flow trial | Windows App 11.4.3 on the tested Mac; not all RDP endpoints/sources |
+| A complete native modifier sequence fixes the observed Windows App `v` | Physical comparison of Flow/keyboard events and accepted local Flow trial; subsequent owner-confirmed insertion with superwhisper and Valis on 1.1.0 | The tested local Windows App setup; additional RDP endpoints and recording modes are separate integration checks |
 | An active event tap can suppress an event | Apple's Core Graphics callback contract | External API proof only |
 | Filtering the source paste prevents the leaked `v` | Physical trials with Flow, superwhisper and Valis | Tested local Mac and Screen Sharing setup |
 | Source clipboard return can identify the original | Snapshot/revision regression tests and physical clipboard checks | Component + local integration proof |

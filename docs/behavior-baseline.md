@@ -159,3 +159,13 @@ not by local key logs. Production regression tests protect the native sequence,
 repeated admission, context/revision cancellation, physical modifiers and key
 release during shutdown. The release removes temporary logging and time limits;
 no diagnostic logs or real transcript contents are committed.
+
+## Windows App: all default dictation sources
+
+Later on 2026-10-07, with 1.1.0 installed, the owner separately tested Valis and
+superwhisper and confirmed that both successfully inserted dictated text through
+Windows App. Together with the earlier Flow trial, this establishes user-reported
+remote insertion for all three default sources in this local Windows App setup.
+They use the same selected-source handler; no vendor-specific change was needed.
+This follow-up did not separately report clipboard restoration, recording modes
+or additional remote endpoints.

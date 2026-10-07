@@ -2,18 +2,21 @@
 
 ## Unreleased
 
-- Add opt-in local diagnostic logs for paste stages, clipboard revisions and
-  context changes, without recording transcript contents.
-- Add a bounded, read-only local clipboard preparation step before Windows App
-  paste. Cancel before sending keys if data is unavailable or the context changes.
-  This targets a deferred-data hypothesis; remote delivery still requires local
-  validation. Apple Screen Sharing's paste/restoration protocol is unchanged.
+## 1.1.1 — 2026-10-07
 
-- Clarify that both remote clients use the same selected dictation apps and
-  clipboard-paste contract, with no Flow-only mode. Add regression coverage through
-  the real source classifier for Flow, superwhisper, Valis and custom apps,
-  including helper processes and clipboard-return policies. Version 1.1.0 already
-  includes this shared runtime behavior.
+- Prevent delayed or unavailable clipboard data from freezing the helper.
+  Abandon timed-out reads without sending a late paste.
+- Improve failure diagnostics, with optional local debug logging that excludes
+  transcript contents and is disabled in release downloads.
+- Expand regression coverage for clipboard reads, cancellation, restoration and
+  the shared dictation-app handling in both supported remote clients.
+
+Validation: automated checks include an intentionally unresponsive clipboard
+provider. The owner confirmed successful local Flow dictations without hangs in
+Apple Screen Sharing and Windows App. First dictation after sleep and intermittent
+stale RDP clipboard data remain separate checks; this release does not claim a
+fix for every remote clipboard issue. Downloads remain ad-hoc signed and not
+Apple notarized.
 
 ## 1.1.0 — 2026-10-07
 

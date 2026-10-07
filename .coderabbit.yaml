@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  # Keep the existing CodeRabbit commit status available as a required check.
+  review_progress: false
+  commit_status: true
+  fail_commit_status: true
+  review_status: true
+  high_level_summary_in_walkthrough: true
+  poem: false
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+    drafts: false
+  # Preserve the repository's existing optional test-generation setting.
+  finishing_touches:
+    unit_tests:
+      enabled: false

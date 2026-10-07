@@ -59,13 +59,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func buildContent() {
         guard let content = window?.contentView else { return }
         let scope = NSTextField(wrappingLabelWithString:
-            "Works automatically in Apple Screen Sharing only.\nOther remote desktop apps have not been tested.")
+            "Works automatically in Apple Screen Sharing and Windows App.")
         scope.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         scope.textColor = .secondaryLabelColor
         let permissionHeading = NSTextField(labelWithString: "Accessibility")
         permissionHeading.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
         let permissionDetail = NSTextField(wrappingLabelWithString: installed
-            ? "Allow the helper to intercept dictation paste and use Screen Sharing’s clipboard menu. Enable the permission, then return here."
+            ? "Allow the helper to intercept and send dictation paste in supported remote windows. Enable the permission, then return here."
             : "Move this app to Applications, eject the disk image and open the installed copy before granting permission.")
         permissionDetail.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         permissionDetail.textColor = .secondaryLabelColor
@@ -121,6 +121,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
     private func refreshPermission() {
         loginStatus.stringValue = launchAtLogin.statusDescription
+        loginStatus.textColor = launchAtLogin.isEnabled ? .systemGreen : .secondaryLabelColor
         let trusted = AccessibilityPermission.isTrusted()
         if trusted && !previousTrust { inputReady = onPermissionGranted() }
         if !trusted { inputReady = false }

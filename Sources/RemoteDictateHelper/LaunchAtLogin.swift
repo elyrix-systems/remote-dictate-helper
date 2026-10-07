@@ -41,6 +41,8 @@ final class LaunchAtLogin {
         }
     }
 
+    var isEnabled: Bool { isInstalled && service.status == .enabled }
+
     var statusDescription: String {
         guard isInstalled else { return "Move app to Applications" }
         switch service.status {

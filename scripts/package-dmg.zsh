@@ -55,7 +55,9 @@ Remote Dictate Helper
 2. Eject this disk image and open the app from Applications.
 3. In Settings, grant Accessibility and choose dictation apps. List changes save automatically.
 
-Runs on your LOCAL Mac. Requires macOS 26 or later and Apple Screen Sharing.
+Runs on your LOCAL Mac. Requires Apple silicon and macOS 26 or later.
+Supports Apple Screen Sharing and Microsoft Windows App (RDP).
+Ordinary clipboard redirection must work in your remote connection first.
 Your dictation app supplies the microphone and transcript. No remote installation.
 
 Updates: quit the existing helper normally before replacing it in Applications.

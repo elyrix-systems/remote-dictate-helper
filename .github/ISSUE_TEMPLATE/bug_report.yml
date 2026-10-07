@@ -1,5 +1,5 @@
 name: Bug report
-description: Report an issue with dictation through Apple Screen Sharing.
+description: Report an issue with dictation through Apple Screen Sharing or Windows App.
 body:
   - type: markdown
     attributes:
@@ -8,7 +8,7 @@ body:
     id: environment
     attributes:
       label: Versions
-      description: Helper version, local/remote macOS versions and dictation app/version.
+      description: Helper version, local macOS, remote OS, remote client and dictation app/version.
     validations:
       required: true
   - type: textarea

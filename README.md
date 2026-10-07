@@ -2,19 +2,24 @@
 
 # Remote Dictate Helper
 
-Dictate on your Mac. Paste into a remote Mac through **Apple Screen Sharing**.
+Dictate on your Mac. Paste into a remote computer through **Apple Screen Sharing**
+or **Microsoft Windows App** (formerly Microsoft Remote Desktop).
 
 [Product website](https://elyrix-systems.com/remote-dictate-helper/) ·
 [Elyrix Systems](https://elyrix-systems.com)
 
 Remote Dictate Helper is a small, open-source macOS menu bar app for clipboard-based
-voice dictation. It has been tested locally with **Wispr Flow**, **superwhisper**
-and **Valis**, including superwhisper push-to-talk in a remote Codex text field.
-Your microphone and dictation app stay on the local Mac. Nothing needs to be
-installed on the remote Mac.
+voice dictation. Your microphone and dictation app stay on the local Mac.
+The helper needs no installation on the remote computer.
 
-**Apple Screen Sharing is the only supported remote desktop app.** Other VNC,
-RDP and remote desktop clients have not been tested or implemented as targets.
+| Remote desktop client on the local Mac | Locally tested dictation apps |
+| --- | --- |
+| Apple Screen Sharing | Wispr Flow, superwhisper and Valis; including superwhisper push-to-talk in a remote Codex field |
+| Microsoft Windows App, via RDP | Wispr Flow |
+
+**Windows App support starts with 1.1.0.** Other VNC/RDP clients have not been
+implemented or verified. Adding a dictation app in Settings enables its paste
+protocol; it does not establish that every app/client combination has been tested.
 
 Released under the [MIT license](LICENSE).
 Primary maintainer: **[@pradaev](https://github.com/pradaev)**.
@@ -26,7 +31,10 @@ A dictation app usually places its result on the local clipboard, sends Command+
 and restores what you had copied before. In Screen Sharing, that synthetic paste
 can reach the remote Mac before the clipboard does, sometimes leaving a stray `v`.
 
-Remote Dictate Helper coordinates that handoff:
+Remote Dictate Helper coordinates that handoff. The two remote clients use
+different clipboard protocols.
+
+### Apple Screen Sharing
 
 1. While Screen Sharing is active, it keeps a short, in-memory snapshot history
    of the local clipboard.
@@ -41,6 +49,22 @@ Remote Dictate Helper coordinates that handoff:
 5. It restores your original local clipboard, sends that restored clipboard to
    the remote connection and turns shared clipboard synchronization back on.
 
+### Microsoft Windows App
+
+Windows App can receive a dictation app's synthetic Command+V as a plain `v`,
+even when physical Command+V and RDP clipboard redirection work.
+
+1. The helper intercepts the selected dictation app's paste in the active
+   Windows App window.
+2. It waits for physical modifiers to be released, provided the same window,
+   input position and clipboard revision remain current.
+3. It sends one complete native Command+V sequence, including Command press and
+   release events and device-specific modifier flags. It never sends Backspace.
+
+RDP handles clipboard redirection. This path **does not write the clipboard or
+change Windows App settings**. Your dictation app remains responsible for keeping
+or restoring your previous clipboard. Enable its restore/keep-clipboard option.
+
 The helper reacts to the **paste**, not the recording shortcut. Hold-to-talk,
 double-tap and toggle recording remain features of your dictation app; configure
 them there. Manual paste and dictation into local applications are left alone.
@@ -49,7 +73,9 @@ You may switch windows while recording and return to the remote field before
 stopping. Once the helper captures a paste, changing focus, clicking or typing
 before replay cancels that insertion. It will not paste later when you return. A new copy takes precedence
 over restoring an old clipboard. **Done** in the helper’s menu means local processing finished;
-Screen Sharing does not provide confirmation that the remote field consumed it.
+Neither remote client provides the helper with confirmation that the remote
+field consumed it. In Windows App, **Done** means the paste keys were sent; it
+does not claim the dictation app has restored its clipboard.
 
 ## Installation
 
@@ -62,7 +88,7 @@ Get the DMG from the [latest stable release](https://github.com/elyrix-systems/r
 2. Eject the disk image, then open the installed app from Applications.
 3. In **Settings**, grant Accessibility and choose your dictation apps. List changes save automatically.
 
-**Version 1.0 is stable, but the download is not Apple notarized.** It is ad-hoc signed, not signed
+**Stable downloads are currently not Apple notarized.** It is ad-hoc signed, not signed
 with an Apple Developer ID. macOS may block the first launch. If you have reviewed
 the source/release and trust it, use **System Settings → Privacy & Security →
 Open Anyway**, where available. Follow [Apple’s instructions](https://support.apple.com/en-us/102445).
@@ -119,9 +145,13 @@ ID signing, and [contributing](CONTRIBUTING.md) to submit a change.
 
 ## First use
 
-1. Open Apple Screen Sharing on the local Mac. Enable **Edit → Use Shared
-   Clipboard**. Check that ordinary local copy and manual Command+V work in a
-   remote text field first.
+1. Open the remote client on the local Mac. In Apple Screen Sharing, enable
+   **Edit → Use Shared Clipboard**. In Windows App, enable clipboard redirection
+   from the local device to the remote session; see
+   [Microsoft's clipboard settings](https://learn.microsoft.com/en-us/windows-app/device-audio-folder-redirection-teams).
+   Check ordinary local copy and manual Command+V in a remote field first.
+   Remote Windows also accepts its native Control+V. The helper cannot bypass
+   an administrator's clipboard policy.
 2. Launch Remote Dictate Helper. Its single **Settings** window includes Accessibility
    and the dictation app list. Grant Accessibility in
    **System Settings → Privacy & Security → Accessibility** when requested. The
@@ -156,18 +186,20 @@ insertion or simulated character typing is a different protocol.
 ## Troubleshooting
 
 - **Nothing arrives remotely:** first repeat the ordinary copy/paste check and
-  confirm Screen Sharing's shared clipboard is on. Confirm the dictation app is
+  confirm clipboard sharing/redirection is enabled in the selected remote client.
+  Confirm the dictation app is
   listed in Settings and configured to paste via the clipboard.
 - **Error in the menu:** open the helper’s menu for the error. Open **Settings**
   to check Accessibility and grant it if needed. If macOS disabled the event filter, quit and
   reopen the helper. Do not retry a failed paste blindly; check the remote field.
 - **Waiting to restore:** return to the original Screen Sharing connection so
   clipboard cleanup can finish. Quit also lets pending restoration finish.
-- **Clipboard release timeout:** enable restoration in your dictation app. For
+- **Screen Sharing clipboard release timeout:** enable restoration in your dictation app. For
   an app deliberately configured to leave its transcript, quit the helper and
   set that source's `clipboardReturn` to `keepsTranscript` in the settings file,
   then reopen it. The default is `restoresPrevious`; this is an explicit app
-  contract, not a delay setting.
+  contract, not a delay setting. Windows App does not use that release protocol;
+  it repairs the paste while the current transcript is still in the clipboard.
 - **Permission disappears after rebuilding:** use the same local signing
   identity; see [local signing](docs/distribution.md#installation-paths). Ad-hoc
   updates change code identity: an enabled old entry can remain while the new
@@ -185,6 +217,8 @@ status metadata, not dictated text. Review any report before posting it publicly
 Fork the repository and send a pull request; see [CONTRIBUTING.md](CONTRIBUTING.md).
 The regression suite covers capture, cancellation, clipboard ownership and
 restoration, formatting, key-state guards and exactly one paste without deletion.
+Windows App tests also cover consecutive dictations, clipboard revision changes,
+modifier release, focus/input cancellation and releasing owned keys during Quit.
 It uses disposable named pasteboards and mocked input, never real keystrokes.
 GitHub Actions runs those checks on a standard macOS runner and scans for secrets.
 
@@ -194,4 +228,5 @@ GitHub Actions runs those checks on a standard macOS runner and scans for secret
 - [Maintainers](MAINTAINERS.md) · [Changelog](CHANGELOG.md)
 
 Voice dictation · Wispr Flow · superwhisper · Valis · macOS · Apple Screen Sharing ·
-remote desktop · clipboard synchronization · push-to-talk.
+Microsoft Windows App · Microsoft Remote Desktop · RDP · remote desktop ·
+clipboard synchronization · push-to-talk.

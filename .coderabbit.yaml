@@ -10,9 +10,9 @@ reviews:
   high_level_summary_in_walkthrough: true
   poem: false
   auto_review:
-    enabled: true
-    auto_incremental_review: true
-    auto_pause_after_reviewed_commits: 0
+    # The maintainer requests review with @coderabbitai review after CI passes.
+    enabled: false
+    auto_incremental_review: false
     drafts: false
   # Preserve the repository's existing optional test-generation setting.
   finishing_touches:

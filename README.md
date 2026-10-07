@@ -88,7 +88,7 @@ Get the DMG from the [latest stable release](https://github.com/elyrix-systems/r
 2. Eject the disk image, then open the installed app from Applications.
 3. In **Settings**, grant Accessibility and choose your dictation apps. List changes save automatically.
 
-**Stable downloads are currently not Apple notarized.** It is ad-hoc signed, not signed
+**Stable downloads are currently not Apple notarized.** They are ad-hoc signed, not signed
 with an Apple Developer ID. macOS may block the first launch. If you have reviewed
 the source/release and trust it, use **System Settings → Privacy & Security →
 Open Anyway**, where available. Follow [Apple’s instructions](https://support.apple.com/en-us/102445).

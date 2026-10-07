@@ -11,7 +11,11 @@ copyright and permission notices in the [MIT license](LICENSE) when adapting cod
 3. Run the checks below and add meaningful regression coverage for changed behavior.
 4. Open a pull request against `main`. Explain the problem, resulting behavior
    and validation. Clearly separate automated tests from physical Mac testing.
-5. Wait for CI and maintainer review. Contributors do not need direct write access.
+5. Wait for CI, CodeRabbit and maintainer review. CodeRabbit automatically reviews
+   ready pull requests and subsequent pushes. Its `CodeRabbit` status is a required
+   check for `main`; a skipped review does not count as completed review. Address
+   actionable findings and resolve review conversations before merging. Only
+   **@pradaev** may merge. Contributors do not need direct write access.
 
 ```zsh
 : "Computer: Local Mac | Account: $USER"

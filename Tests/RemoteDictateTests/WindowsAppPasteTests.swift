@@ -15,6 +15,7 @@ final class WindowsAppPasteTests {
         var onReadHardware: (() -> Void)?
         var events: [CGEvent] = []
         var results: [Result<Void, Error>] = []
+        var diagnostics: [String] = []
         var pauses = 0
         var onPause: ((Int) throws -> Void)?
         var monitor: WindowsAppPasteMonitor!
@@ -36,7 +37,8 @@ final class WindowsAppPasteTests {
                 post: { [unowned self] in events.append($0) }, pause: { [unowned self] in
                     pauses += 1; try onPause?(pauses); await Task.yield()
                 }, inputSequence: { [unowned self] in sequence }, modifierSequence: { [unowned self] in modifiers },
-                onCompleted: { [unowned self] in results.append($0) })
+                onCompleted: { [unowned self] in results.append($0) },
+                diagnostic: { [unowned self] in diagnostics.append($0) })
         }
 
         func input() -> PasteInputEvent {
@@ -55,6 +57,30 @@ final class WindowsAppPasteTests {
             expectFalse(events.last!.flags.contains(.maskCommand))
             expectEqual(events.last!.flags.rawValue & 0x18, 0)
             expectFalse(keys.contains(51), "Never delete a remote character")
+        }
+    }
+
+    func testDiagnosticReasons() async throws {
+        for reason in ["revision", "target", "input", "modifiers"] {
+            let f = Fixture()
+            f.onPause = { index in
+                guard index == 1 else { return }
+                switch reason {
+                case "revision": f.revision += 1
+                case "target": f.target = 999
+                case "input": f.sequence += 1
+                default: f.modifiers += 1
+                }
+            }
+            expectTrue(f.monitor.observe(f.input()))
+            try await f.wait()
+            let log = f.diagnostics.joined(separator: "\n")
+            let expected = ["revision": "clipboard_changed", "target": "foreground_target_changed",
+                            "input": "input_sequence_changed", "modifiers": "physical_modifiers_changed"][reason]!
+            expectTrue(log.contains("cancel reason=\(expected)"))
+            expectTrue(log.contains("op=") && log.contains("elapsedMs="))
+            expectEqual(f.keys, [55, 55], "Cancellation still balances Command without posting V")
+            f.checkRelease()
         }
     }
 

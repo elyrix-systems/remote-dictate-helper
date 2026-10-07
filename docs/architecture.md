@@ -88,6 +88,10 @@ filter and Quit stop the task and release owned keys without retries. A complete
 or failed revision is not automatically replayed. New dictations use fresh revisions.
 No diagnostic sampler, expiry, per-key log or transcript copy is shipped.
 
+Maintainer builds can explicitly enable [local diagnostic metadata](diagnostics.md).
+This adds an independent context observer and detailed failure reasons, without
+changing either client protocol. The normal build leaves it disabled.
+
 ## Integration evidence and limits
 
 | Risky assumption | Evidence | Scope |

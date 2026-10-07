@@ -121,12 +121,14 @@ def prepare_identity():
     print("Local signing setup complete. The private key stays in your keychain.")
 
 
-def bundle_metadata(version, build_number):
+def bundle_metadata(version, build_number, diagnostics="0"):
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ToolError("Version must be MAJOR.MINOR.PATCH.")
     if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)*", build_number):
         raise ToolError("Build number must contain only numeric components.")
-    return {
+    if diagnostics not in {"0", "1"}:
+        raise ToolError("Diagnostics must be explicitly 0 or 1.")
+    metadata = {
         "CFBundleIdentifier": BUNDLE_ID, "CFBundleName": PRODUCT,
         "CFBundleDisplayName": PRODUCT, "CFBundleExecutable": PRODUCT,
         "CFBundlePackageType": "APPL", "CFBundleDevelopmentRegion": "en",
@@ -134,6 +136,9 @@ def bundle_metadata(version, build_number):
         "CFBundleIconFile": "RemoteDictateHelper", "CFBundleIconName": "RemoteDictateHelper",
         "LSMinimumSystemVersion": "26.0", "LSUIElement": True,
     }
+    if diagnostics == "1":
+        metadata["RDDiagnosticLogging"] = True
+    return metadata
 
 
 def build(output=None):
@@ -144,7 +149,7 @@ def build(output=None):
             number = invoke(["git", "rev-list", "--count", "HEAD"], capture=True)
         except ToolError:
             number = "1"
-    metadata = bundle_metadata(version, number)
+    metadata = bundle_metadata(version, number, os.environ.get("REMOTE_DICTATE_DIAGNOSTICS", "0"))
     configuration = os.environ.get("REMOTE_DICTATE_CONFIGURATION", "release")
     if configuration not in {"debug", "release"}:
         raise ToolError("Build configuration must be debug or release.")

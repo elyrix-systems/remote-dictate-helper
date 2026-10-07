@@ -178,6 +178,7 @@ final class LocalClipboardRestoration {
         timer?.invalidate()
         let seconds = allowance(for: session)
         pending = (session, now() + seconds)
+        DiagnosticLog.shared.record("restore.scheduled session=\(session.id) ownedRevision=\(session.ownedRevision.map(String.init) ?? "none") currentRevision=\(board.changeCount) delaySeconds=\(seconds) pastePosted=\(session.pastePosted)")
         let token = session.id
         let timer = Timer(timeInterval: seconds, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.restoreIfDue(token: token) }
@@ -194,6 +195,7 @@ final class LocalClipboardRestoration {
         timer = nil
         self.pending = nil
         let session = pending.session
+        DiagnosticLog.shared.record("restore.due session=\(session.id) ownedRevision=\(session.ownedRevision.map(String.init) ?? "none") currentRevision=\(board.changeCount)")
         guard ownsClipboard(session) else { onOutcome(.skippedChanged, nil); return }
         do {
             let items = try session.original.materialize()

@@ -14,3 +14,7 @@ reviews:
     auto_incremental_review: true
     auto_pause_after_reviewed_commits: 0
     drafts: false
+  # Preserve the repository's existing optional test-generation setting.
+  finishing_touches:
+    unit_tests:
+      enabled: false

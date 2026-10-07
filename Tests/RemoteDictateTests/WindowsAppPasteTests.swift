@@ -13,6 +13,8 @@ final class WindowsAppPasteTests {
         var modifiers: UInt64 = 0
         var heldFn = false
         var onReadHardware: (() -> Void)?
+        var onPrepare: (() async throws -> Void)?
+        var preparedRevisions: [Int] = []
         var events: [CGEvent] = []
         var results: [Result<Void, Error>] = []
         var diagnostics: [String] = []
@@ -28,7 +30,13 @@ final class WindowsAppPasteTests {
                 }, post: { _ in fail("Readiness must not post input") })
             monitor = WindowsAppPasteMonitor(sources: sources,
                 isAvailable: { [unowned self] in available }, targetPID: { [unowned self] in target },
-                revision: { [unowned self] in revision }, isTrusted: { [unowned self] in trusted },
+                revision: { [unowned self] in revision }, prepareClipboard: { [unowned self] captured in
+                    expectTrue(events.isEmpty || events.last?.flags.contains(.maskCommand) == false,
+                               "Clipboard read must precede native keys")
+                    preparedRevisions.append(captured)
+                    try await onPrepare?()
+                    return WindowsClipboardRead(type: "public.utf8-plain-text", bytes: 17)
+                }, isTrusted: { [unowned self] in trusted },
                 captureWindow: { [unowned self] _ in
                     return { [unowned self] in
                         guard windowValid else { throw WindowsAppPasteError.targetChanged }
@@ -82,6 +90,44 @@ final class WindowsAppPasteTests {
             expectEqual(f.keys, [55, 55], "Cancellation still balances Command without posting V")
             f.checkRelease()
         }
+    }
+
+    func testClipboardPreparationGuards() async throws {
+        for reason in ["read-failure", "revision", "window", "target", "input", "trust", "quit", "disabled"] {
+            let f = Fixture()
+            f.onPrepare = {
+                expectTrue(f.events.isEmpty, "No Command-down before clipboard data is available")
+                await Task.yield()
+                switch reason {
+                case "read-failure": throw WindowsClipboardReadError.unavailable
+                case "revision": f.revision += 1
+                case "window": f.windowValid = false
+                case "target": f.target = nil
+                case "input": f.sequence += 1
+                case "trust": f.trusted = false
+                case "quit": f.monitor.stop()
+                default: f.monitor.filterDisabled()
+                }
+            }
+            expectTrue(f.monitor.observe(f.input())); try await f.wait()
+            for _ in 0..<10 { await Task.yield() }
+            expectTrue(f.events.isEmpty, "Changes while reading must prevent all keys: \(reason)")
+            if reason == "quit" { expectTrue(f.results.isEmpty) }
+            else { expectEqual(f.results.count, 1); expectThrows(try f.results[0].get()) }
+            f.target = 101; f.windowValid = true; f.trusted = true
+            await Task.yield()
+            expectTrue(f.events.isEmpty, "Returning cannot replay an aborted read")
+        }
+        let f = Fixture()
+        f.onPrepare = {
+            try await Task.sleep(for: .milliseconds(30))
+            expectTrue(f.events.isEmpty, "Slow provider cannot be overtaken by native paste")
+        }
+        expectTrue(f.monitor.observe(f.input())); try await f.wait()
+        expectEqual(f.keys, [55,9,9,55]); try f.results[0].get()
+        let log = f.diagnostics.joined(separator: "\n")
+        expectTrue(log.contains("stage=clipboard-read-ready") && log.contains("readMs="))
+        print("Windows App clipboard preparation: read precedes keys; changed context/revision, failed read and shutdown cannot replay; mocked input only")
     }
 
     func testAllConfiguredSources() async throws {
@@ -140,6 +186,7 @@ final class WindowsAppPasteTests {
         }
         f.checkRelease()
         expectEqual(f.revision, 4, "Helper must never write the clipboard")
+        expectEqual(f.preparedRevisions, [1,2,3], "Each new revision is read before its only paste")
 
         let ignored = Fixture()
         let events: [PasteInputEvent] = [

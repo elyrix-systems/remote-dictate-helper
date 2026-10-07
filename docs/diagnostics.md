@@ -34,6 +34,10 @@ progress; the app accepts only one transfer at a time.
   original. Candidate revisions and returned format identifiers are recorded.
 - Windows App additionally records native paste stages and distinct revision,
   physical modifier, foreground and input-sequence cancellation reasons.
+- The local Windows clipboard-read candidate records `clipboard-read-start` and
+  `clipboard-read-ready`, the captured revision, chosen format, byte count and
+  read duration. Failure stops before the native sequence. These records establish
+  only local data availability, not that RDP received the current clipboard.
 
 The observer logs workspace activation, sleep/wake, session activity and observed
 screen lock/unlock notifications. While a supported remote client is foreground,
@@ -67,3 +71,21 @@ input. Live observation on the signed local build verifies startup and log
 activity separately; dictation, remote receipt and reproduction of intermittent
 failures still require the owner's normal local usage. No public release is
 created by enabling diagnostics.
+
+## Windows clipboard-read experiment
+
+The current local candidate adds a bounded, read-only preparation step to the
+Windows adapter, independently of the diagnostic flag. This is a protocol change
+under evaluation, not an effect of enabling logging. It does not change the Apple
+Screen Sharing transaction. It neither republishes the clipboard nor inserts
+locally, activates another app, retries a paste or retains/logs text.
+
+Risky assumption: requesting the source's text representation before replay may
+materialize data that Windows App otherwise obtains too late. Apple's
+[pasteboard data-provider contract](https://developer.apple.com/documentation/appkit/nspasteboarditemdataprovider)
+is external evidence for deferred data. A separate-process local spike using only
+a disposable named board verified materialization with an unchanged revision;
+component tests cover refusal, cancellation, timing bounds and unchanged formats.
+None of this proves that a remote Windows clipboard is ready. Physical repeated
+dictation and post-sleep trials are still required; this experiment has not been
+published as a release.

@@ -62,6 +62,8 @@ struct TestRunner {
         try await windows.testRepeatedPasteAndScope()
         try await windows.testChangedContextAndShutdown()
         try await windows.testDiagnosticReasons()
+        try await windows.testClipboardPreparationGuards()
+        try await testWindowsClipboardReader()
         try windows.testPhysicalModifierTracking()
         try testExplicitClipboardTransferRecovery()
         try testLegacyCoreCompatibility()

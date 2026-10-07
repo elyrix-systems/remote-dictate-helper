@@ -61,13 +61,25 @@ Flow, superwhisper, Valis and apps added in Settings use this same boundary.
 The process lookup is injectable so regression tests can exercise the complete
 classification/capture path without launching those apps or posting real input.
 
-`idle → captured → modifiers released → one native paste → idle`
+`idle → captured → local text readable → modifiers released → one native paste → idle`
 
 `WindowsAppPasteMonitor` accepts the same configured source identities only when
-`com.microsoft.rdc.macos` is frontmost. It reads the pasteboard revision counter,
-not payloads, and never writes to the pasteboard or invokes Screen Sharing menus.
+`com.microsoft.rdc.macos` is frontmost. It captures the pasteboard revision counter
+and then asks `WindowsClipboardReader` to read one advertised text representation
+on a serial worker, outside the event-tap decision and main actor. UTF-8 plain text
+is preferred, with RTF or HTML as alternatives for rich-only sources. The bytes
+are discarded after checking availability; no decoding, normalization, retention,
+clipboard writes or Screen Sharing menu operations occur.
 The source's `clipboardReturn` policy applies only to Screen Sharing. In Windows
 App the source must keep its current result available until native paste finishes.
+
+The read completes as soon as the data is available; 250 ms is a failure deadline,
+not a fixed delay. Missing/empty data, a changed revision, timeout or cancellation
+stop the operation before any keys. At most one AppKit read may be outstanding,
+even after timeout: a slow external provider cannot accumulate workers or cause
+late input. Target, window, trust, input sequence and revision are checked again
+after reading. Local data availability does not acknowledge RDP delivery; there
+is no blind retry or duplicate paste if Windows still holds old clipboard data.
 
 A separate instance of `PasteEventFilter` pairs the accepted V-down/V-up and
 tracks physical modifier changes. The existing Screen Sharing filter's event
@@ -97,6 +109,7 @@ changing either client protocol. The normal build leaves it disabled.
 | Risky assumption | Evidence | Scope |
 | --- | --- | --- |
 | A complete native modifier sequence fixes the observed Windows App `v` | Physical comparison of Flow/keyboard events and accepted local Flow trial; subsequent owner-confirmed insertion with superwhisper and Valis on 1.1.0 | The tested local Windows App setup; additional RDP endpoints and recording modes are separate integration checks |
+| Reading local text before the native sequence may help a deferred pasteboard provider | Apple's data-provider contract; a separate-process named-pasteboard spike materialized data without changing its revision; worker/cancellation regression tests | External API + local component proof. Whether this fixes stale RDP data is an unconfirmed integration hypothesis, pending physical trials; local availability is not remote readiness |
 | An active event tap can suppress an event | Apple's Core Graphics callback contract | External API proof only |
 | Filtering the source paste prevents the leaked `v` | Physical trials with Flow, superwhisper and Valis | Tested local Mac and Screen Sharing setup |
 | Source clipboard return can identify the original | Snapshot/revision regression tests and physical clipboard checks | Component + local integration proof |

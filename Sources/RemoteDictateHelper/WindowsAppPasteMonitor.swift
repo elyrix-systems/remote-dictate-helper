@@ -14,7 +14,8 @@ enum WindowsAppPasteError: Error, CustomStringConvertible {
 }
 
 /// Repairs the shortcut while RDP owns clipboard redirection. This adapter never
-/// reads clipboard contents, writes the clipboard or changes sharing settings.
+/// writes the clipboard or changes sharing settings. A bounded read prepares
+/// local text data before replay; RDP delivery remains unobservable here.
 @MainActor
 final class WindowsAppPasteMonitor {
     static let bundleIdentifier = "com.microsoft.rdc.macos"
@@ -23,6 +24,7 @@ final class WindowsAppPasteMonitor {
     private let targetPID: () -> pid_t?
     private let isAvailable: () -> Bool
     private let revision: () -> Int
+    private let prepareClipboard: (Int) async throws -> WindowsClipboardRead
     private let isTrusted: () -> Bool
     private let captureWindow: @MainActor (pid_t) throws -> WindowValidation
     private let readiness: ExplicitPasteShortcut
@@ -47,6 +49,9 @@ final class WindowsAppPasteMonitor {
              let app = NSWorkspace.shared.frontmostApplication
              return app?.bundleIdentifier == bundleIdentifier ? app?.processIdentifier : nil
          }, revision: @escaping () -> Int = { NSPasteboard.general.changeCount },
+         prepareClipboard: @escaping (Int) async throws -> WindowsClipboardRead = {
+             try await WindowsClipboardReader.shared.prepare(revision: $0)
+         },
          isTrusted: @escaping () -> Bool = { AccessibilityPermission.isTrusted() },
          captureWindow: @escaping @MainActor (pid_t) throws -> WindowValidation = WindowsAppPasteMonitor.windowValidation,
          readiness: ExplicitPasteShortcut? = nil,
@@ -58,6 +63,7 @@ final class WindowsAppPasteMonitor {
          diagnostic: @escaping (String) -> Void = { DiagnosticLog.shared.record($0) }) {
         self.sources = sources; self.isAvailable = isAvailable; self.targetPID = targetPID
         self.revision = revision; self.isTrusted = isTrusted; self.captureWindow = captureWindow
+        self.prepareClipboard = prepareClipboard
         self.readiness = readiness ?? ExplicitPasteShortcut(isolatedSoftwareCommand: true, interceptedPaste: true,
             targetIsFrontmost: { targetPID() == $0 })
         self.post = post; self.pause = pause; self.onCaptured = onCaptured
@@ -148,6 +154,12 @@ final class WindowsAppPasteMonitor {
                         throw WindowsAppPasteError.clipboardChanged
                     }
                 }
+                try validateContext()
+                trace("stage=clipboard-read-start revision=\(capturedRevision) deadlineMs=250")
+                let readStarted = ProcessInfo.processInfo.systemUptime
+                let prepared = try await self.prepareClipboard(capturedRevision)
+                try validateContext()
+                trace("stage=clipboard-read-ready revision=\(capturedRevision) type=\(prepared.type) bytes=\(prepared.bytes) readMs=\(Int((ProcessInfo.processInfo.systemUptime - readStarted) * 1000)) remoteReceipt=unverified")
                 _ = try await self.readiness.waitUntilReady(targetPID: pid, validateTarget: validateContext,
                     onWaiting: { self.report("Windows App waiting: \($0)"); trace("stage=wait-modifiers \($0)") })
                 let modifiers = self.currentModifierSequence

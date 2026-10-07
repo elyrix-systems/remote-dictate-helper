@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add opt-in local diagnostic logs for paste stages, clipboard revisions and
+  context changes, without recording transcript contents.
+- Add a bounded, read-only local clipboard preparation step before Windows App
+  paste. Cancel before sending keys if data is unavailable or the context changes.
+  This targets a deferred-data hypothesis; remote delivery still requires local
+  validation. Apple Screen Sharing's paste/restoration protocol is unchanged.
+
 - Clarify that both remote clients use the same selected dictation apps and
   clipboard-paste contract, with no Flow-only mode. Add regression coverage through
   the real source classifier for Flow, superwhisper, Valis and custom apps,

@@ -44,6 +44,7 @@ final class PasteEventFilter: @unchecked Sendable {
     private let onEvent: @Sendable (PasteInputEvent, PasteCaptureDecision?) -> Void
     private let onDisabled: @Sendable () -> Void
     private let trackPhysicalModifiers: Bool
+    private let sourceIdentifier: @Sendable (pid_t) -> String?
     private let lock = NSLock()
     private let ready = DispatchSemaphore(value: 0)
     private var loop: CFRunLoop?
@@ -56,9 +57,13 @@ final class PasteEventFilter: @unchecked Sendable {
     private let ownPID = ProcessInfo.processInfo.processIdentifier
 
     init(sources: [DictationSource], onEvent: @escaping @Sendable (PasteInputEvent, PasteCaptureDecision?) -> Void,
-         onDisabled: @escaping @Sendable () -> Void, trackPhysicalModifiers: Bool = false) {
+         onDisabled: @escaping @Sendable () -> Void, trackPhysicalModifiers: Bool = false,
+         sourceIdentifier: @escaping @Sendable (pid_t) -> String? = {
+             NSRunningApplication(processIdentifier: $0)?.bundleIdentifier
+         }) {
         self.sources = sources; self.onEvent = onEvent; self.onDisabled = onDisabled
         self.trackPhysicalModifiers = trackPhysicalModifiers
+        self.sourceIdentifier = sourceIdentifier
     }
     func start() -> Bool {
         let worker = Thread { [self] in run() }
@@ -119,7 +124,7 @@ final class PasteEventFilter: @unchecked Sendable {
             return false
         }
         guard pid != ownPID else { return false }
-        let identifier = pid > 0 ? NSRunningApplication(processIdentifier: pid)?.bundleIdentifier : nil
+        let identifier = pid > 0 ? sourceIdentifier(pid) : nil
         let source = sources.first { $0.matches(identifier) }
         var input = PasteInputEvent(kind: type == .keyDown ? .down : type == .keyUp ? .up : .mouse,
             key: UInt16(clamping: event.getIntegerValueField(.keyboardEventKeycode)),

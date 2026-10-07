@@ -54,6 +54,13 @@ consumption. Revision checks, including equal-text copies, protect newer content
 
 ## Windows App transaction
 
+Source identification is shared by both remote adapters. `PasteEventFilter` maps
+the event's process to its bundle identifier and matches the selected source or
+its dotted helper identifier. It never switches algorithms by vendor name.
+Flow, superwhisper, Valis and apps added in Settings use this same boundary.
+The process lookup is injectable so regression tests can exercise the complete
+classification/capture path without launching those apps or posting real input.
+
 `idle → captured → modifiers released → one native paste → idle`
 
 `WindowsAppPasteMonitor` accepts the same configured source identities only when

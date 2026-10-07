@@ -2,6 +2,41 @@ import AppKit
 import RemoteDictateCore
 
 final class InterceptionTests {
+    @MainActor func testAllConfiguredSources() throws {
+        let board = NSPasteboard(name: .init("rdh-source-contract-\(UUID())"))
+        defer { board.releaseGlobally() }
+        for source in SourceInputHarness.sources {
+            for suffix in ["", ".helper"] {
+                for policy in ClipboardReturnPolicy.allCases {
+                    var selected = source; selected.clipboardReturn = policy
+                    var id: UUID?
+                    let monitor = DictationPasteMonitor(board: board, targetPID: { 100 }, isAvailable: { true },
+                        sources: [selected], onCaptured: { id = $0 }, onError: { fail("\($0)") })
+                    let input = SourceInputHarness(sources: [selected], identifier: source.bundleIdentifier + suffix) {
+                        monitor.observe($0)
+                    }
+                    for _ in 0..<2 {
+                        board.clearContents(); expectTrue(board.setString("original", forType: .string))
+                        monitor.sample()
+                        board.clearContents(); expectTrue(board.setString("dictation", forType: .string))
+                        expectTrue(try input.paste(down: true)); expectTrue(try input.paste(down: false))
+                        let captured = try expectUnwrap(id)
+                        if policy == .restoresPrevious {
+                            expectNil(try monitor.completeIfReleased(captured))
+                            board.clearContents(); expectTrue(board.setString("original", forType: .string))
+                        }
+                        let result = try expectUnwrap(monitor.completeIfReleased(captured))
+                        expectEqual(result.payload.text, "dictation")
+                        expectEqual(result.original.text, "original")
+                        monitor.discard(captured); id = nil
+                    }
+                    monitor.stop()
+                }
+            }
+        }
+        print("Screen Sharing source contract passed: all default/custom sources and helper IDs share capture and clipboard-return policies; named clipboard only")
+    }
+
     @MainActor func testSuppressionScopeAndRelease() throws {
         let board = NSPasteboard(name: .init("rdh-intercept-\(UUID())")); defer { board.releaseGlobally() }
         var target: pid_t? = 100

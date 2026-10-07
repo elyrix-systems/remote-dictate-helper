@@ -12,14 +12,17 @@ Remote Dictate Helper is a small, open-source macOS menu bar app for clipboard-b
 voice dictation. Your microphone and dictation app stay on the local Mac.
 The helper needs no installation on the remote computer.
 
-| Remote desktop client on the local Mac | Locally tested dictation apps |
-| --- | --- |
-| Apple Screen Sharing | Wispr Flow, superwhisper and Valis; including superwhisper push-to-talk in a remote Codex field |
-| Microsoft Windows App, via RDP | Wispr Flow |
+**Supported remote clients:** Apple Screen Sharing and Microsoft Windows App (RDP).
+Windows App support starts with 1.1.0.
 
-**Windows App support starts with 1.1.0.** Other VNC/RDP clients have not been
-implemented or verified. Adding a dictation app in Settings enables its paste
-protocol; it does not establish that every app/client combination has been tested.
+**Dictation apps:** Wispr Flow, superwhisper and Valis are included by default.
+Add other clipboard-based dictation apps through **Settings → Add App**. The same
+selected app list and paste handling apply to both remote clients, without
+vendor-specific adapters.
+
+The dictation app must put its result on the local clipboard and send **Command+V**.
+Direct typing, Accessibility insertion and other remote clients use different
+mechanisms and are outside this integration.
 
 Released under the [MIT license](LICENSE).
 Primary maintainer: **[@pradaev](https://github.com/pradaev)**.
@@ -32,7 +35,10 @@ and restores what you had copied before. In Screen Sharing, that synthetic paste
 can reach the remote Mac before the clipboard does, sometimes leaving a stray `v`.
 
 Remote Dictate Helper coordinates that handoff. The two remote clients use
-different clipboard protocols.
+different clipboard protocols. The choice depends on the active remote client,
+not which dictation app produced the paste. Shared regression tests cover source
+selection and both client paths; [integration records](docs/behavior-baseline.md)
+keep the details of physical validation.
 
 ### Apple Screen Sharing
 

@@ -19,13 +19,13 @@ final class WindowsAppPasteTests {
         var onPause: ((Int) throws -> Void)?
         var monitor: WindowsAppPasteMonitor!
 
-        init() {
+        init(sources: [DictationSource] = AppSettings().sources) {
             let ready = ExplicitPasteShortcut(isolatedSoftwareCommand: true, interceptedPaste: true,
                 isTrusted: { [unowned self] in trusted }, targetIsFrontmost: { [unowned self] in target == $0 },
                 flags: { .maskCommand }, hardwareFlags: { [unowned self] in
                     onReadHardware?(); return heldFn ? .maskSecondaryFn : []
                 }, post: { _ in fail("Readiness must not post input") })
-            monitor = WindowsAppPasteMonitor(sources: AppSettings().sources,
+            monitor = WindowsAppPasteMonitor(sources: sources,
                 isAvailable: { [unowned self] in available }, targetPID: { [unowned self] in target },
                 revision: { [unowned self] in revision }, isTrusted: { [unowned self] in trusted },
                 captureWindow: { [unowned self] _ in
@@ -56,6 +56,41 @@ final class WindowsAppPasteTests {
             expectEqual(events.last!.flags.rawValue & 0x18, 0)
             expectFalse(keys.contains(51), "Never delete a remote character")
         }
+    }
+
+    func testAllConfiguredSources() async throws {
+        for source in SourceInputHarness.sources {
+            for suffix in ["", ".helper"] {
+                for policy in ClipboardReturnPolicy.allCases {
+                    var selected = source; selected.clipboardReturn = policy
+                    let f = Fixture(sources: [selected])
+                    let input = SourceInputHarness(sources: [selected], identifier: source.bundleIdentifier + suffix) {
+                        if let sequence = $0.sequence { f.sequence = sequence }
+                        return f.monitor.observe($0)
+                    }
+                    for _ in 0..<2 {
+                        expectTrue(try input.paste(down: true), "Every selected source uses the same capture path")
+                        expectTrue(try input.paste(down: false), "Pair each suppressed paste")
+                        try await f.wait(); f.revision += 1
+                    }
+                    expectEqual(f.keys, [55,9,9,55,55,9,9,55])
+                    expectEqual(f.results.count, 2)
+                    for result in f.results { try result.get() }
+                    f.checkRelease()
+                }
+            }
+            var disabled = source; disabled.enabled = false
+            for selection in [[], [disabled]] {
+                let f = Fixture(sources: selection)
+                let input = SourceInputHarness(sources: selection, identifier: source.bundleIdentifier) {
+                    if let sequence = $0.sequence { f.sequence = sequence }
+                    return f.monitor.observe($0)
+                }
+                expectFalse(try input.paste(down: true)); expectFalse(try input.paste(down: false))
+                expectTrue(f.events.isEmpty); expectFalse(f.monitor.isBusy)
+            }
+        }
+        print("Windows App source contract passed: Flow, superwhisper, Valis, custom app, helper IDs, both clipboard policies and removed/disabled sources; mocked input only")
     }
 
     func testRepeatedPasteAndScope() async throws {

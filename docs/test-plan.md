@@ -18,6 +18,7 @@ The custom native runner works with Command Line Tools without XCTest.
 | Capture | Empty results, same text in distinct revisions, original snapshot selection, zero-item original returned as empty UTF-8 text, refusal of unknown/nonempty returns, bounded history, focus/input cancellation, no queued or stale replay. |
 | Release | Return to Screen Sharing before paste starts a fresh transaction; missing source key-up and clipboard return have distinct timeout diagnostics; logs omit clipboard contents. |
 | Interception | Manual/local/unknown input passes through; accepted down/up pairing; slow capture and disabled filter fail safely; no deletion. |
+| Shared source contract | Real event classification into both client monitors for Flow, superwhisper, Valis and a custom source; main/helper bundle IDs, consecutive captures and both clipboard-return policies. Removed/disabled sources pass through. No running dictation apps required. |
 | Clipboard | Full-format original restoration, UTF-8 HTML transport, empty originals, clipboard ownership, newer/equal-text copies and restoration deadlines. |
 | Input | Exactly one private Command+V; permission/target/modifier refusal; mid-sequence release; HID residue guards and no retry. |
 | Windows App | Consecutive source pastes, busy and revision guards, manual/local/self input exclusion, complete private Command+V flags/types, Fn release, target/window/input/clipboard cancellation, balanced release on Quit and disabled filter. No clipboard writes or real keystrokes. |
@@ -28,6 +29,12 @@ The custom native runner works with Command Line Tools without XCTest.
 GitHub Actions runs the native suite and bundle build on a standard macOS 26 Apple silicon runner,
 plus privacy and secret checks. It does not install or launch the helper. A green
 workflow establishes component behavior, not a successful physical remote paste.
+
+Routine common-path changes run the shared source contract suite rather than
+requiring a new manual matrix for every vendor. Repeat focused physical checks
+when the remote-client protocol changes, a source changes its paste behavior or
+a reported regression cannot be reproduced with the shared contract. The
+integration record documents evidence; it is not an app-specific feature switch.
 
 ## Physical integration checklist
 
@@ -98,8 +105,8 @@ markers and select the dictation app in Settings; do not change administrator po
    cancellation and no deferred insertion. Check local dictation/manual paste and
    repeat the Apple Screen Sharing baseline after switching clients.
 5. Test repeated operations and Quit after installation. Record any source warning
-   separately from remote text arrival. Test each source/client combination before
-   claiming compatibility; Flow is the physically verified Windows App source.
+   separately from remote text arrival. When investigating a source-specific issue,
+   record its paste/clipboard settings and compare it with the shared contract.
 
 ## Validated baseline
 

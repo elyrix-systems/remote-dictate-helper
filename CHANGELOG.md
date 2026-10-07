@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Clarify that both remote clients use the same selected dictation apps and
+  clipboard-paste contract, with no Flow-only mode. Add regression coverage through
+  the real source classifier for Flow, superwhisper, Valis and custom apps,
+  including helper processes and clipboard-return policies. Version 1.1.0 already
+  includes this shared runtime behavior.
+
 ## 1.1.0 — 2026-10-07
 
 - Add Microsoft Windows App (formerly Microsoft Remote Desktop) as a supported

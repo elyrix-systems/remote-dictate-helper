@@ -9,11 +9,12 @@ struct CapturedClipboard {
     let revision: Int
     let encodingMarkerAdded: Bool
 
-    static func read(from board: NSPasteboard, after baselineRevision: Int) throws -> Self? {
+    @MainActor static func read(from board: NSPasteboard, after baselineRevision: Int, access: ClipboardAccess = .shared) throws -> Self? {
         let revision = board.changeCount
         guard revision != baselineRevision else { throw LocalClipboardError.changed }
-        let snapshot = try LocalClipboardSnapshot.capture(board)
-        let text = board.string(forType: .string)
+        let value = try access.read(board)
+        let snapshot = value.snapshot
+        let text = value.text
         guard board.changeCount == revision else { throw LocalClipboardError.changed }
         guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let transport = snapshot.markingUnlabelledHTMLUTF8()

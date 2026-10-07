@@ -24,6 +24,7 @@ New dictations are not queued while a transaction is finishing.
 | `AppSettings` | Source app identifiers, explicit clipboard-return policies and settings migration. The app runs automatically; obsolete enable/method fields are discarded. |
 | `PasteEventFilter` | Active session tap on its own run loop. Only a selected source's candidate Command+V requests a bounded capture decision. |
 | `DictationPasteMonitor` | Source, foreground, revision, key-up and cancellation gates; per-paste transaction state. |
+| `IsolatedClipboardReader` / `ClipboardAccess` | Read external provider data in a short-lived child; keep immutable, revision-bound snapshots for synchronous guards. |
 | `ClipboardBaselineHistory` | Up to eight snapshots / 64 MiB in RAM, sampled only while Screen Sharing is active and the helper is idle. |
 | `CapturedClipboard` | Actual clipboard formats and text; an encoding marker only for unlabelled, valid non-ASCII UTF-8 HTML sent remotely. |
 | `ScreenSharingClipboardMenu` / `ExplicitClipboardTransfer` | Validate the original connection and clipboard revision; sharing off, captured snapshot write, Send Clipboard. |
@@ -32,8 +33,10 @@ New dictations are not queued while a transaction is finishing.
 | `LaunchAtLogin` | One-time registration of the installed main app through `SMAppService`; macOS owns subsequent enable/disable choices. |
 | `DictationSourceSettings` | Commit source-list edits immediately after persistence/application succeeds; retain the previous selection on failure. |
 
-The event filter has an 80 ms capture-decision queue budget and a 100 ms clipboard
-capture budget. Late capture passes the original input through. Accepted V-down
+The event filter has an 80 ms capture-decision budget. Candidate data is prepared
+asynchronously, with at most 60 ms of that remaining budget for the reader. Only
+the prepared transaction is committed under the decision lock. Late capture
+passes the original input through and cannot schedule a deferred replay. Accepted V-down
 and V-up are filtered; ordinary Command flag events, manual input, other apps and
 the helper's replay are not removed. A disabled tap reports an error. An input
 sequence counter prevents delayed main-thread callbacks from hiding a new click
@@ -52,6 +55,47 @@ Successful input allows restoration after 200 ms; partial/failed input retains
 the five-second protection interval. Those allowances do not establish remote
 consumption. Revision checks, including equal-text copies, protect newer content.
 
+## Clipboard provider isolation
+
+`NSPasteboardItem.data(forType:)` and `string(forType:)` may synchronously ask
+another application to materialize promised data. They have no application-level
+cancellation deadline. Reading them on the main actor caused an observed
+60-second helper freeze; a source app waiting for the same clipboard also stalled.
+That correlation does not prove the helper caused the source app's stall.
+
+All production payload reads now run in a short-lived, read-only invocation of
+the same executable. It exits before main-app initialization: no window, login
+registration, input tap, clipboard write or logging. Its bounded binary response
+travels through an anonymous pipe and stays in RAM. There is one reader slot;
+only this owned child can be terminated on timeout/cancellation. Other apps and
+the system clipboard service are never terminated.
+
+Baseline and source-return reads have a 250 ms failure deadline. Baseline polling
+allows one asynchronous sample and does not retry a failed revision continuously.
+The candidate read uses the shorter remaining capture budget. Each result checks
+revision, cancellation and context again before use. Timeout is refusal, never
+permission to paste old data. Source matching, formats, clipboard-return policy,
+sharing transitions and the one-paste/no-Backspace sequence remain unchanged.
+
+Synchronous replay/restoration guards use prepared RAM snapshots and the current
+revision; they never request provider data. After a successful write of eager
+items, the exact published bytes are remembered under that revision. Subsequent
+guards validate that publication, rather than requesting our own lazy AppKit
+provider from a blocked main thread. Even an equal-text copy with a new revision
+invalidates ownership. This does not identify external writers or detect a
+provider mutating data without changing its revision; clipboard revisions remain
+the ownership boundary. Full-format tests independently read the resulting board.
+
+Readiness gate: the risky assumption is that a blocked AppKit call can be confined
+to a disposable child while the menu actor and event tap keep running. **Local
+component proof** uses an external named-board provider that sleeps for 60 seconds:
+the read times out, the main actor continues advancing, the child is reaped, and a
+new revision reads successfully. Delayed-provider, rich/multiple-item, cancellation,
+expired-decision and complete capture/release/restoration tests use the production
+reader. This is not production proof that Flow can never stall independently on
+a remote clipboard, or that Windows has received fresh RDP data. Real dictation,
+sleep/reconnection and both remote clients still require physical validation.
+
 ## Windows App transaction
 
 Source identification is shared by both remote adapters. `PasteEventFilter` maps
@@ -61,13 +105,25 @@ Flow, superwhisper, Valis and apps added in Settings use this same boundary.
 The process lookup is injectable so regression tests can exercise the complete
 classification/capture path without launching those apps or posting real input.
 
-`idle → captured → modifiers released → one native paste → idle`
+`idle → captured → local text readable → modifiers released → one native paste → idle`
 
 `WindowsAppPasteMonitor` accepts the same configured source identities only when
-`com.microsoft.rdc.macos` is frontmost. It reads the pasteboard revision counter,
-not payloads, and never writes to the pasteboard or invokes Screen Sharing menus.
+`com.microsoft.rdc.macos` is frontmost. It captures the pasteboard revision counter
+and then asks `WindowsClipboardReader` to read one advertised text representation
+in the isolated reader process, outside the event-tap decision and main actor. UTF-8 plain text
+is preferred, with RTF or HTML as alternatives for rich-only sources. The bytes
+are discarded after checking availability; no decoding, normalization, retention,
+clipboard writes or Screen Sharing menu operations occur.
 The source's `clipboardReturn` policy applies only to Screen Sharing. In Windows
 App the source must keep its current result available until native paste finishes.
+
+The read completes as soon as the data is available; 250 ms is a failure deadline,
+not a fixed delay. Missing/empty data, a changed revision, timeout or cancellation
+stop the operation before any keys. At most one reader process may be outstanding; timeout or cancellation terminates
+and reaps that owned child before the slot is reused. A slow external provider
+cannot accumulate readers or cause late input. Target, window, trust, input sequence and revision are checked again
+after reading. Local data availability does not acknowledge RDP delivery; there
+is no blind retry or duplicate paste if Windows still holds old clipboard data.
 
 A separate instance of `PasteEventFilter` pairs the accepted V-down/V-up and
 tracks physical modifier changes. The existing Screen Sharing filter's event
@@ -88,11 +144,16 @@ filter and Quit stop the task and release owned keys without retries. A complete
 or failed revision is not automatically replayed. New dictations use fresh revisions.
 No diagnostic sampler, expiry, per-key log or transcript copy is shipped.
 
+Maintainer builds can explicitly enable [local diagnostic metadata](diagnostics.md).
+This adds an independent context observer and detailed failure reasons, without
+changing either client protocol. The normal build leaves it disabled.
+
 ## Integration evidence and limits
 
 | Risky assumption | Evidence | Scope |
 | --- | --- | --- |
 | A complete native modifier sequence fixes the observed Windows App `v` | Physical comparison of Flow/keyboard events and accepted local Flow trial; subsequent owner-confirmed insertion with superwhisper and Valis on 1.1.0 | The tested local Windows App setup; additional RDP endpoints and recording modes are separate integration checks |
+| Reading local text before the native sequence may help a deferred pasteboard provider | Apple's data-provider contract; a separate-process named-pasteboard spike materialized data without changing its revision; isolation/cancellation regression tests | External API + local component proof. Whether this fixes stale RDP data is an unconfirmed integration hypothesis, pending physical trials; local availability is not remote readiness |
 | An active event tap can suppress an event | Apple's Core Graphics callback contract | External API proof only |
 | Filtering the source paste prevents the leaked `v` | Physical trials with Flow, superwhisper and Valis | Tested local Mac and Screen Sharing setup |
 | Source clipboard return can identify the original | Snapshot/revision regression tests and physical clipboard checks | Component + local integration proof |

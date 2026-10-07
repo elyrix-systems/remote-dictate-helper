@@ -4,8 +4,9 @@
 
 Run `make test`, `make privacy-scan` and `REMOTE_DICTATE_CODESIGN_IDENTITY=- make build`
 on macOS 26 or later with Swift 6 and Python 3.
-Tests use disposable named pasteboards and mocked key posting. They do not use
-the general clipboard, real keystrokes, a microphone, other apps or permissions.
+Tests use disposable named pasteboards and mocked key posting. Isolation tests additionally launch owned read-only reader/provider subprocesses.
+They do not use the general clipboard, real keystrokes, a microphone, user apps
+or permissions.
 The custom native runner works with Command Line Tools without XCTest.
 
 | Suite | Behavior protected |
@@ -17,11 +18,14 @@ The custom native runner works with Command Line Tools without XCTest.
 | Build tools | Exact signing identity lookup, private local certificate preference and explicit override, missing-certificate refusal, explicit ad-hoc mode, credential-safe errors, running-app refusal and rollback after a failed installation replacement. |
 | Capture | Empty results, same text in distinct revisions, original snapshot selection, zero-item original returned as empty UTF-8 text, refusal of unknown/nonempty returns, bounded history, focus/input cancellation, no queued or stale replay. |
 | Release | Return to Screen Sharing before paste starts a fresh transaction; missing source key-up and clipboard return have distinct timeout diagnostics; logs omit clipboard contents. |
+| Diagnostics | Explicit build opt-in, no file when disabled, bounded rotation/private files/symlink refusal, no transcript in failure logs, distinct click/key/foreground/clipboard/modifier reasons and unchanged cancellation/key release. Live context sampling and observer overhead require the local diagnostic app. |
 | Interception | Manual/local/unknown input passes through; accepted down/up pairing; slow capture and disabled filter fail safely; no deletion. |
 | Shared source contract | Real event classification into both client monitors for Flow, superwhisper, Valis and a custom source; main/helper bundle IDs, consecutive captures and both clipboard-return policies. Removed/disabled sources pass through. No running dictation apps required. |
 | Clipboard | Full-format original restoration, UTF-8 HTML transport, empty originals, clipboard ownership, newer/equal-text copies and restoration deadlines. |
 | Input | Exactly one private Command+V; permission/target/modifier refusal; mid-sequence release; HID residue guards and no retry. |
 | Windows App | Consecutive source pastes, busy and revision guards, manual/local/self input exclusion, complete private Command+V flags/types, Fn release, target/window/input/clipboard cancellation, balanced release on Quit and disabled filter. No clipboard writes or real keystrokes. |
+| Clipboard isolation | Real subprocess reads of rich/multiple-item and deferred named boards; a provider blocked for 60 seconds cannot block the main actor; timeout/cancellation reaps only the owned reader; following revisions remain readable; expired capture cannot replay. Full capture/release/restoration uses the production asynchronous reader. |
+| Windows clipboard preparation | Read before all native keys; named-board text/rich formats unchanged, empty/missing/stale data refused, timeout and cancellation release the caller, one owned reader with reaping on timeout, late completion cannot replay, context changes during reading cancel input. |
 | Completion | Deferred cleanup readiness, single completion attempt, busy refusal and errors. |
 | Transfer | Clipboard menu order, exact setting transitions, failure recovery, original Send before sharing-on and receipt validation. |
 | Core compatibility | Existing 1.0 library calls and conformers still compile, including fixed-clipboard validation and default preparation. |
@@ -86,6 +90,17 @@ Record app/OS versions, source clipboard settings, visible result, status and
 whether each step actually ran. Never claim remote receipt based only on a local
 log or replace physical integration checks with mocked events.
 
+## Local hang-fix check
+
+Use the signed diagnostic candidate on the local Mac. Confirm Settings and Quit
+remain responsive while entering/leaving Screen Sharing, including after normal
+sleep. Repeat ordinary clipboard paste and a synthetic dictation with exact local
+clipboard restoration. Repeat a Windows App dictation; record stale remote data
+separately, since isolation does not establish RDP readiness. Read-timeout logs
+must name baseline/candidate/source-return, the revision and failure without text.
+Do not trigger an artificial stall on the general clipboard or force-stop a source
+app to test this. The deliberate hung-provider test uses a disposable named board.
+
 ## Windows App physical checks
 
 Requires the local Apple-silicon Mac, Accessibility, the native **Microsoft
@@ -107,6 +122,11 @@ markers and select the dictation app in Settings; do not change administrator po
 5. Test repeated operations and Quit after installation. Record any source warning
    separately from remote text arrival. When investigating a source-specific issue,
    record its paste/clipboard settings and compare it with the shared contract.
+6. For the local clipboard-read candidate, repeat distinct phrases and the first
+   dictation after normal sleep/reconnection, without a preparatory local paste or
+   recopy. Compare `clipboard-read-ready` timing/revision with native input and the
+   actual remote result. Record stale text, missing input and any source warning
+   separately. Successful reads alone do not validate RDP delivery or this fix.
 
 ## Validated baseline
 

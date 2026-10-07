@@ -30,6 +30,7 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
     private let clipboardText: String
     private let initialClipboardChangeCount: Int
     private let writeTranscript: (String) throws -> Void
+    private let validateTranscript: () throws -> Void
     private var preparedTranscript = false
     private var preparedRevision: Int?
     private let pasteboard = NSPasteboard.general
@@ -43,6 +44,7 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
         expectedWindow: AXUIElement? = nil,
         input: ExplicitPasteShortcut = ExplicitPasteShortcut(),
         writeTranscript: @escaping (String) throws -> Void,
+        validateTranscript: @escaping () throws -> Void,
         trace: @escaping (String) -> Void = { _ in }
     ) throws {
         guard target.bundleIdentifier == "com.apple.ScreenSharing", target.processIdentifier > 0 else {
@@ -56,6 +58,7 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
         AXUIElementSetMessagingTimeout(application, 0.75)
         window = try Self.elementAttribute(application, kAXFocusedWindowAttribute)
         if let expectedWindow, !CFEqual(window, expectedWindow) {
+            DiagnosticLog.shared.record("screen-sharing.window_changed stage=driver-init pid=\(pid) expectedRef=\(CFHash(expectedWindow)) actualRef=\(CFHash(window)) front=\(DiagnosticLog.front)")
             throw ScreenSharingClipboardMenuError.targetChanged
         }
         let count = NSPasteboard.general.changeCount
@@ -69,6 +72,7 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
         clipboardText = text
         initialClipboardChangeCount = count
         self.writeTranscript = writeTranscript
+        self.validateTranscript = validateTranscript
         // Resolve both commands before allowing any preference mutation.
         _ = try menuItems()
     }
@@ -86,7 +90,9 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
     }
 
     static func validateWindow(target: NSRunningApplication, expected: AXUIElement) throws {
-        guard CFEqual(expected, try captureWindow(target: target)) else {
+        let actual = try captureWindow(target: target)
+        guard CFEqual(expected, actual) else {
+            DiagnosticLog.shared.record("screen-sharing.window_changed stage=validate pid=\(target.processIdentifier) expectedRef=\(CFHash(expected)) actualRef=\(CFHash(actual)) front=\(DiagnosticLog.front)")
             throw ScreenSharingClipboardMenuError.targetChanged
         }
     }
@@ -102,10 +108,10 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
             return
         }
         guard count == (preparedRevision ?? initialClipboardChangeCount),
-              pasteboard.string(forType: .string) == clipboardText,
               pasteboard.changeCount == count else {
             throw ScreenSharingClipboardMenuError.clipboardChanged
         }
+        try validateTranscript()
     }
 
     func prepareClipboard() throws {
@@ -214,8 +220,13 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
     }
 
     private func validateConnection() throws {
-        guard NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == "com.apple.ScreenSharing",
-              CFEqual(window, try Self.elementAttribute(application, kAXFocusedWindowAttribute)) else {
+        guard NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == "com.apple.ScreenSharing" else {
+            DiagnosticLog.shared.record("screen-sharing.connection_changed reason=process_identity pid=\(pid) actual=\(DiagnosticLog.app(pid))")
+            throw ScreenSharingClipboardMenuError.targetChanged
+        }
+        let actual = try Self.elementAttribute(application, kAXFocusedWindowAttribute)
+        guard CFEqual(window, actual) else {
+            DiagnosticLog.shared.record("screen-sharing.window_changed stage=connection pid=\(pid) expectedRef=\(CFHash(window)) actualRef=\(CFHash(actual)) front=\(DiagnosticLog.front)")
             throw ScreenSharingClipboardMenuError.targetChanged
         }
     }
@@ -261,6 +272,7 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
         AXUIElementSetMessagingTimeout(element, 0.75)
         let result = AXUIElementCopyAttributeValue(element, name as CFString, &value)
         guard result == .success, let value else {
+            DiagnosticLog.shared.record("screen-sharing.ax_failed attribute=\(name) code=\(result.rawValue) elementRef=\(CFHash(element))")
             throw ScreenSharingClipboardMenuError.accessibility(operation: "read \(name)", code: result.rawValue)
         }
         return value

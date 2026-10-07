@@ -11,7 +11,7 @@ final class InputTests {
         func expectFailure(_ operation: () throws -> Void) {
             do { try operation(); fatalError("Expected shortcut to refuse input") } catch {}
         }
-        expectFailure { _ = try ScreenSharingClipboardMenu(target: NSRunningApplication.current, transcript: "fixture", writeTranscript: { _ in fatalError("Unexpected write") }) }
+        expectFailure { _ = try ScreenSharingClipboardMenu(target: NSRunningApplication.current, transcript: "fixture", writeTranscript: { _ in fatalError("Unexpected write") }, validateTranscript: { fatalError("Unexpected validation") }) }
         let syntheticModifier = ExplicitPasteShortcut(
             isTrusted: { true }, targetIsFrontmost: { _ in true },
             flags: { .maskCommand }, hardwareFlags: { [] }, post: record

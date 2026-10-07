@@ -6,7 +6,7 @@ final class ReleaseTests {
         var target: pid_t? = 100
         var clock: TimeInterval = 0
         var captured: UUID?
-        let monitor = DictationPasteMonitor(board: board, targetPID: { target }, isAvailable: { true },
+        let monitor = DictationPasteMonitor(board: board, access: eagerTestClipboardAccess(), targetPID: { target }, isAvailable: { true },
             now: { clock }, onCaptured: { captured = $0 }, onError: { fail("\($0)") })
         func copy(_ value: String) { board.clearContents(); expectTrue(board.setString(value, forType: .string)) }
         copy("before recording"); monitor.sample()
@@ -34,7 +34,7 @@ final class ReleaseTests {
                 var clock: TimeInterval = 0
                 var captured: UUID?
                 var messages: [String] = []
-                let monitor = DictationPasteMonitor(board: board, targetPID: { 100 }, isAvailable: { true },
+                let monitor = DictationPasteMonitor(board: board, access: eagerTestClipboardAccess(), targetPID: { 100 }, isAvailable: { true },
                     now: { clock }, onCaptured: { captured = $0 }, onError: { fail("\($0)") },
                     report: { messages.append($0) })
                 func copy(_ value: String) { board.clearContents(); expectTrue(board.setString(value, forType: .string)) }

@@ -14,7 +14,8 @@ enum WindowsAppPasteError: Error, CustomStringConvertible {
 }
 
 /// Repairs the shortcut while RDP owns clipboard redirection. This adapter never
-/// reads clipboard contents, writes the clipboard or changes sharing settings.
+/// writes the clipboard or changes sharing settings. A bounded read prepares
+/// local text data before replay; RDP delivery remains unobservable here.
 @MainActor
 final class WindowsAppPasteMonitor {
     static let bundleIdentifier = "com.microsoft.rdc.macos"
@@ -23,6 +24,7 @@ final class WindowsAppPasteMonitor {
     private let targetPID: () -> pid_t?
     private let isAvailable: () -> Bool
     private let revision: () -> Int
+    private let prepareClipboard: (Int) async throws -> WindowsClipboardRead
     private let isTrusted: () -> Bool
     private let captureWindow: @MainActor (pid_t) throws -> WindowValidation
     private let readiness: ExplicitPasteShortcut
@@ -33,6 +35,7 @@ final class WindowsAppPasteMonitor {
     private let onCaptured: () -> Void
     private let onCompleted: (Result<Void, Error>) -> Void
     private let report: (String) -> Void
+    private let diagnostic: (String) -> Void
     private var filter: PasteEventFilter?
     private var filterHealthy = true
     private var task: Task<Void, Never>?
@@ -46,6 +49,9 @@ final class WindowsAppPasteMonitor {
              let app = NSWorkspace.shared.frontmostApplication
              return app?.bundleIdentifier == bundleIdentifier ? app?.processIdentifier : nil
          }, revision: @escaping () -> Int = { NSPasteboard.general.changeCount },
+         prepareClipboard: @escaping (Int) async throws -> WindowsClipboardRead = {
+             try await WindowsClipboardReader.shared.prepare(revision: $0)
+         },
          isTrusted: @escaping () -> Bool = { AccessibilityPermission.isTrusted() },
          captureWindow: @escaping @MainActor (pid_t) throws -> WindowValidation = WindowsAppPasteMonitor.windowValidation,
          readiness: ExplicitPasteShortcut? = nil,
@@ -53,13 +59,16 @@ final class WindowsAppPasteMonitor {
          pause: @escaping () async throws -> Void = { try await Task.sleep(for: .milliseconds(25)) },
          inputSequence: (() -> UInt64?)? = nil, modifierSequence: (() -> UInt64)? = nil,
          onCaptured: @escaping () -> Void = {}, onCompleted: @escaping (Result<Void, Error>) -> Void = { _ in },
-         report: @escaping (String) -> Void = { _ in }) {
+         report: @escaping (String) -> Void = { _ in },
+         diagnostic: @escaping (String) -> Void = { DiagnosticLog.shared.record($0) }) {
         self.sources = sources; self.isAvailable = isAvailable; self.targetPID = targetPID
         self.revision = revision; self.isTrusted = isTrusted; self.captureWindow = captureWindow
+        self.prepareClipboard = prepareClipboard
         self.readiness = readiness ?? ExplicitPasteShortcut(isolatedSoftwareCommand: true, interceptedPaste: true,
             targetIsFrontmost: { targetPID() == $0 })
         self.post = post; self.pause = pause; self.onCaptured = onCaptured
         self.onCompleted = onCompleted; self.report = report
+        self.diagnostic = diagnostic
         self.inputSequenceOverride = inputSequence; self.modifierSequenceOverride = modifierSequence
     }
 
@@ -67,7 +76,12 @@ final class WindowsAppPasteMonitor {
         guard isTrusted() else { throw WindowsAppPasteError.unavailable }
         filterHealthy = true
         let next = PasteEventFilter(sources: sources, onEvent: { [weak self] event, decision in
-            guard let decision else { return }
+            guard let decision else {
+                if event.fromDictation, event.kind == .up, event.key == 9, DiagnosticLog.shared.enabled {
+                    DiagnosticLog.shared.record("windows.source_v_up \(event.diagnosticMetadata)")
+                }
+                return
+            }
             DispatchQueue.main.async {
                 decision.evaluate {
                     guard let self, self.filter != nil else { return false }
@@ -104,10 +118,15 @@ final class WindowsAppPasteMonitor {
         let capturedRevision = revision()
         guard lastRevision != capturedRevision else { return false }
         lastRevision = capturedRevision; isBusy = true
+        let id = UUID(), started = ProcessInfo.processInfo.systemUptime
+        diagnostic("op=\(id) client=windows stage=captured targetPID=\(pid) revision=\(capturedRevision) \(event.diagnosticMetadata)")
         let currentGeneration = generation
         onCaptured()
         task = Task { [weak self] in
             guard let self else { return }
+            @MainActor func trace(_ message: String) {
+                self.diagnostic("op=\(id) client=windows elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - started) * 1000)) targetPID=\(pid) front=\(DiagnosticLog.front) \(message)")
+            }
             let result: Result<Void, Error>
             do {
                 try Task.checkCancellation()
@@ -115,23 +134,49 @@ final class WindowsAppPasteMonitor {
                 let validateContext = {
                     try Task.checkCancellation()
                     guard self.generation == currentGeneration, self.filterHealthy, self.isTrusted() else {
+                        trace("cancel reason=unavailable generation=\(self.generation) expectedGeneration=\(currentGeneration) filterHealthy=\(self.filterHealthy)")
                         throw WindowsAppPasteError.unavailable
                     }
-                    guard self.targetPID() == pid else { throw WindowsAppPasteError.targetChanged }
+                    let actual = self.targetPID()
+                    guard actual == pid else {
+                        trace("cancel reason=foreground_target_changed observedPID=\(actual.map(String.init) ?? "none")")
+                        throw WindowsAppPasteError.targetChanged
+                    }
                     try validateWindow()
-                    guard self.currentInputSequence == event.sequence else { throw WindowsAppPasteError.inputChanged }
-                    guard self.revision() == capturedRevision else { throw WindowsAppPasteError.clipboardChanged }
+                    let sequence = self.currentInputSequence
+                    guard sequence == event.sequence else {
+                        trace("cancel reason=input_sequence_changed expected=\(event.sequence.map(String.init) ?? "none") actual=\(sequence.map(String.init) ?? "none") lastInput={\(self.filter?.lastInputMetadata ?? "unavailable")}")
+                        throw WindowsAppPasteError.inputChanged
+                    }
+                    let actualRevision = self.revision()
+                    guard actualRevision == capturedRevision else {
+                        trace("cancel reason=clipboard_changed expected=\(capturedRevision) actual=\(actualRevision)")
+                        throw WindowsAppPasteError.clipboardChanged
+                    }
                 }
+                try validateContext()
+                trace("stage=clipboard-read-start revision=\(capturedRevision) deadlineMs=250")
+                let readStarted = ProcessInfo.processInfo.systemUptime
+                let prepared = try await self.prepareClipboard(capturedRevision)
+                try validateContext()
+                trace("stage=clipboard-read-ready revision=\(capturedRevision) type=\(prepared.type) bytes=\(prepared.bytes) readMs=\(Int((ProcessInfo.processInfo.systemUptime - readStarted) * 1000)) remoteReceipt=unverified")
                 _ = try await self.readiness.waitUntilReady(targetPID: pid, validateTarget: validateContext,
-                    onWaiting: { self.report("Windows App waiting: \($0)") })
+                    onWaiting: { self.report("Windows App waiting: \($0)"); trace("stage=wait-modifiers \($0)") })
                 let modifiers = self.currentModifierSequence
                 try self.readiness.checkReadiness(targetPID: pid)
                 try await WindowsAppPasteShortcut.send(validate: {
                     try validateContext()
-                    guard self.currentModifierSequence == modifiers else { throw WindowsAppPasteError.inputChanged }
-                }, post: self.post, registerCleanup: { self.releaseKeys = $0 }, pause: self.pause)
+                    guard self.currentModifierSequence == modifiers else {
+                        trace("cancel reason=physical_modifiers_changed expected=\(modifiers) actual=\(self.currentModifierSequence)")
+                        throw WindowsAppPasteError.inputChanged
+                    }
+                }, post: { event in
+                    self.post(event)
+                    trace("stage=native-paste type=\(event.type.rawValue) key=\(event.getIntegerValueField(.keyboardEventKeycode)) flags=0x\(String(event.flags.rawValue, radix: 16))")
+                }, registerCleanup: { self.releaseKeys = $0 }, pause: self.pause)
                 result = .success(())
-            } catch { result = .failure(error) }
+                trace("stage=complete remoteReceipt=unverified")
+            } catch { trace("stage=stopped reason=\(error)"); result = .failure(error) }
             guard currentGeneration == self.generation else { return }
             self.releaseKeys = nil; self.task = nil; self.isBusy = false
             switch result {
@@ -160,6 +205,13 @@ final class WindowsAppPasteMonitor {
             return unsafeDowncast(value, to: AXUIElement.self)
         }
         let original = try focusedWindow()
-        return { guard CFEqual(original, try focusedWindow()) else { throw WindowsAppPasteError.targetChanged } }
+        DiagnosticLog.shared.record("windows.window_captured pid=\(pid) windowRef=\(CFHash(original))")
+        return {
+            let actual = try focusedWindow()
+            guard CFEqual(original, actual) else {
+                DiagnosticLog.shared.record("windows.window_changed pid=\(pid) expectedRef=\(CFHash(original)) actualRef=\(CFHash(actual))")
+                throw WindowsAppPasteError.targetChanged
+            }
+        }
     }
 }

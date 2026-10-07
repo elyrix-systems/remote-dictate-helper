@@ -11,6 +11,9 @@ struct PasteInputEvent: Sendable {
     var clipboardReturn: ClipboardReturnPolicy = .restoresPrevious
     var autorepeat = false
     var sequence: UInt64?
+    var sourceBundle: String?
+    var flags: UInt64 = 0
+    var eventUptime: TimeInterval = 0
 }
 
 /// A bounded handoff, not a retained CGEvent. If the main thread cannot prepare
@@ -22,10 +25,13 @@ final class PasteCaptureDecision: @unchecked Sendable {
     private var completed = false
     private var accepted = false
     init(wait: TimeInterval = 0.08) { deadline = ProcessInfo.processInfo.systemUptime + wait }
-    func evaluate(_ body: () -> Bool) {
+    var remaining: TimeInterval { max(0, deadline - ProcessInfo.processInfo.systemUptime) }
+    // The body must only commit prepared state: no provider reads or waiting.
+    @discardableResult func evaluate(_ body: () -> Bool) -> Bool {
         lock.lock(); defer { lock.unlock() }
-        guard !completed, ProcessInfo.processInfo.systemUptime < deadline else { return }
+        guard !completed, ProcessInfo.processInfo.systemUptime < deadline else { return false }
         accepted = body(); completed = true; ready.signal()
+        return true
     }
     func wait() -> Bool {
         let remaining = max(0, deadline - ProcessInfo.processInfo.systemUptime)
@@ -54,6 +60,7 @@ final class PasteEventFilter: @unchecked Sendable {
     private var suppressedAt: TimeInterval = 0
     private var sequence: UInt64 = 0
     private var modifiers: UInt64 = 0
+    private var lastInput = "none"
     private let ownPID = ProcessInfo.processInfo.processIdentifier
 
     init(sources: [DictationSource], onEvent: @escaping @Sendable (PasteInputEvent, PasteCaptureDecision?) -> Void,
@@ -82,6 +89,9 @@ final class PasteEventFilter: @unchecked Sendable {
     var physicalModifierSequence: UInt64 {
         lock.lock(); defer { lock.unlock() }; return modifiers
     }
+    var lastInputMetadata: String {
+        lock.lock(); defer { lock.unlock() }; return lastInput
+    }
     private func run() {
         var types: [CGEventType] = [.keyDown, .keyUp, .leftMouseDown, .rightMouseDown, .otherMouseDown]
         if trackPhysicalModifiers { types.append(.flagsChanged) }
@@ -109,6 +119,7 @@ final class PasteEventFilter: @unchecked Sendable {
     }
     func handle(type: CGEventType, event: CGEvent) -> Bool {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            DiagnosticLog.shared.record("filter.disabled type=\(type.rawValue) physicalModifiers=\(trackPhysicalModifiers)")
             lock.lock(); suppressedPID = nil; lock.unlock()
             onDisabled(); return false
         }
@@ -131,6 +142,8 @@ final class PasteEventFilter: @unchecked Sendable {
             command: event.flags.contains(.maskCommand), pid: pid, fromDictation: source != nil,
             clipboardReturn: source?.clipboardReturn ?? .restoresPrevious,
             autorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0)
+        input.sourceBundle = identifier; input.flags = event.flags.rawValue
+        input.eventUptime = Double(event.timestamp) / 1_000_000_000
         lock.lock()
         if ProcessInfo.processInfo.systemUptime - suppressedAt > 5 { suppressedPID = nil }
         let paired = suppressedPID == pid && input.key == 9 &&
@@ -141,13 +154,18 @@ final class PasteEventFilter: @unchecked Sendable {
         lock.lock()
         if input.kind == .down || input.kind == .mouse { sequence &+= 1 }
         input.sequence = sequence
+        if DiagnosticLog.shared.enabled, input.kind == .down || input.kind == .mouse {
+            lastInput = input.diagnosticMetadata
+        }
         lock.unlock()
         guard input.fromDictation, input.kind == .down, input.key == 9, input.command, !input.autorepeat else {
             onEvent(input, nil); return false
         }
         let decision = PasteCaptureDecision()
+        let decisionStarted = ProcessInfo.processInfo.systemUptime
         onEvent(input, decision)
         let accepted = decision.wait()
+        DiagnosticLog.shared.record("filter.decision physicalModifiers=\(trackPhysicalModifiers) accepted=\(accepted) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - decisionStarted) * 1000)) \(input.diagnosticMetadata)")
         if accepted {
             lock.lock(); suppressedPID = pid; suppressedAt = ProcessInfo.processInfo.systemUptime; lock.unlock()
         }

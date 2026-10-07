@@ -12,6 +12,12 @@ spec.loader.exec_module(tools)
 
 
 class AppToolsTests(unittest.TestCase):
+    def test_diagnostics_require_explicit_build_opt_in(self):
+        self.assertNotIn("RDDiagnosticLogging", tools.bundle_metadata("1.1.0", "110.7.1"))
+        self.assertTrue(tools.bundle_metadata("1.1.0", "110.7.1", "1")["RDDiagnosticLogging"])
+        with self.assertRaises(tools.ToolError):
+            tools.bundle_metadata("1.1.0", "110.7.1", "yes")
+
     def test_local_signing_preference_retains_certificate_and_allows_explicit_override(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

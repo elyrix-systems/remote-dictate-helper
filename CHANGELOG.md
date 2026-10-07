@@ -2,11 +2,21 @@
 
 ## Unreleased
 
-- Clarify that both remote clients use the same selected dictation apps and
-  clipboard-paste contract, with no Flow-only mode. Add regression coverage through
-  the real source classifier for Flow, superwhisper, Valis and custom apps,
-  including helper processes and clipboard-return policies. Version 1.1.0 already
-  includes this shared runtime behavior.
+## 1.1.1 — 2026-10-07
+
+- Prevent delayed or unavailable clipboard data from freezing the helper.
+  Abandon timed-out reads without sending a late paste.
+- Improve failure diagnostics, with optional local debug logging that excludes
+  transcript contents and is disabled in release downloads.
+- Expand regression coverage for clipboard reads, cancellation, restoration and
+  the shared dictation-app handling in both supported remote clients.
+
+Validation: automated checks include an intentionally unresponsive clipboard
+provider. The owner confirmed successful local Flow dictations without hangs in
+Apple Screen Sharing and Windows App. First dictation after sleep and intermittent
+stale RDP clipboard data remain separate checks; this release does not claim a
+fix for every remote clipboard issue. Downloads remain ad-hoc signed and not
+Apple notarized.
 
 ## 1.1.0 — 2026-10-07
 

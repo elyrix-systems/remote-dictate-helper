@@ -114,6 +114,10 @@ in the isolated reader process, outside the event-tap decision and main actor. U
 is preferred, with RTF or HTML as alternatives for rich-only sources. The bytes
 are discarded after checking availability; no decoding, normalization, retention,
 clipboard writes or Screen Sharing menu operations occur.
+An additional explicit diagnostic-text build flag can retain a bounded UTF-8
+prefix of those same bytes in the local debug log. It adds no provider read and
+never treats the local text as remote receipt. Normal builds discard the bytes.
+See [diagnostics](diagnostics.md#optional-local-transcript-capture) for limits.
 The source's `clipboardReturn` policy applies only to Screen Sharing. In Windows
 App the source must keep its current result available until native paste finishes.
 

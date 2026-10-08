@@ -217,6 +217,9 @@ insertion or simulated character typing is a different protocol.
 Settings: `~/Library/Application Support/RemoteDictateHelper/settings.json`.
 Operational log: `~/Library/Logs/RemoteDictateHelper/menu-bar.log`. The log contains
 status metadata, not dictated text. Review any report before posting it publicly.
+Opt-in [diagnostic builds](docs/diagnostics.md) can separately record local
+dictated text with the owner's permission. That setting is off in normal builds;
+text diagnostics cannot confirm what appeared in the remote field.
 
 ## Development and contributions
 

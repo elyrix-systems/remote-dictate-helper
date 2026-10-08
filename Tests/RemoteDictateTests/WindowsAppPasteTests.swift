@@ -22,7 +22,7 @@ final class WindowsAppPasteTests {
         var onPause: ((Int) throws -> Void)?
         var monitor: WindowsAppPasteMonitor!
 
-        init(sources: [DictationSource] = AppSettings().sources) {
+        init(sources: [DictationSource] = AppSettings().sources, textLog: DiagnosticLog = .shared) {
             let ready = ExplicitPasteShortcut(isolatedSoftwareCommand: true, interceptedPaste: true,
                 isTrusted: { [unowned self] in trusted }, targetIsFrontmost: { [unowned self] in target == $0 },
                 flags: { .maskCommand }, hardwareFlags: { [unowned self] in
@@ -35,7 +35,8 @@ final class WindowsAppPasteTests {
                                "Clipboard read must precede native keys")
                     preparedRevisions.append(captured)
                     try await onPrepare?()
-                    return WindowsClipboardRead(type: "public.utf8-plain-text", bytes: 17)
+                    return WindowsClipboardRead(type: "public.utf8-plain-text", bytes: 17,
+                        diagnosticText: textLog.textEnabled ? .capture("RD-synthetic-text") : nil)
                 }, isTrusted: { [unowned self] in trusted },
                 captureWindow: { [unowned self] _ in
                     return { [unowned self] in
@@ -46,7 +47,7 @@ final class WindowsAppPasteTests {
                     pauses += 1; try onPause?(pauses); await Task.yield()
                 }, inputSequence: { [unowned self] in sequence }, modifierSequence: { [unowned self] in modifiers },
                 onCompleted: { [unowned self] in results.append($0) },
-                diagnostic: { [unowned self] in diagnostics.append($0) })
+                diagnostic: { [unowned self] in diagnostics.append($0) }, textLog: textLog)
         }
 
         func input() -> PasteInputEvent {
@@ -89,6 +90,30 @@ final class WindowsAppPasteTests {
             expectTrue(log.contains("op=") && log.contains("elapsedMs="))
             expectEqual(f.keys, [55, 55], "Cancellation still balances Command without posting V")
             f.checkRelease()
+        }
+    }
+
+    func testDiagnosticTextStages() async throws {
+        for reason in ["success", "context-changed-during-read", "cancel-before-v"] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let destination = directory.appendingPathComponent("debug.log")
+            let log = DiagnosticLog(enabled: true, textEnabled: true, destination: destination)
+            let f = Fixture(textLog: log)
+            if reason == "context-changed-during-read" { f.onPrepare = { f.revision += 1 } }
+            if reason == "cancel-before-v" { f.onPause = { _ in f.modifiers += 1 } }
+            expectTrue(f.monitor.observe(f.input())); try await f.wait(); log.flush()
+            if reason == "context-changed-during-read" {
+                expectFalse(FileManager.default.fileExists(atPath: destination.path))
+                expectTrue(f.events.isEmpty)
+            } else {
+                let line = try String(contentsOf: destination, encoding: .utf8)
+                expectEqual(line.split(separator: "\n").count, 1)
+                expectTrue(line.contains("RD-synthetic-text") && line.contains("remoteReceipt=unverified"))
+                let operation = f.diagnostics[0].components(separatedBy: " ")[0]
+                expectTrue(line.contains(operation), "Captured text is linked to the same paste/cancellation")
+                expectEqual(f.keys, reason == "success" ? [55,9,9,55] : [55,55])
+            }
         }
     }
 

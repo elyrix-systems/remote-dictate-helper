@@ -36,6 +36,7 @@ final class WindowsAppPasteMonitor {
     private let onCompleted: (Result<Void, Error>) -> Void
     private let report: (String) -> Void
     private let diagnostic: (String) -> Void
+    private let textLog: DiagnosticLog
     private var filter: PasteEventFilter?
     private var filterHealthy = true
     private var task: Task<Void, Never>?
@@ -49,9 +50,7 @@ final class WindowsAppPasteMonitor {
              let app = NSWorkspace.shared.frontmostApplication
              return app?.bundleIdentifier == bundleIdentifier ? app?.processIdentifier : nil
          }, revision: @escaping () -> Int = { NSPasteboard.general.changeCount },
-         prepareClipboard: @escaping (Int) async throws -> WindowsClipboardRead = {
-             try await WindowsClipboardReader.shared.prepare(revision: $0)
-         },
+         prepareClipboard: ((Int) async throws -> WindowsClipboardRead)? = nil,
          isTrusted: @escaping () -> Bool = { AccessibilityPermission.isTrusted() },
          captureWindow: @escaping @MainActor (pid_t) throws -> WindowValidation = WindowsAppPasteMonitor.windowValidation,
          readiness: ExplicitPasteShortcut? = nil,
@@ -60,10 +59,14 @@ final class WindowsAppPasteMonitor {
          inputSequence: (() -> UInt64?)? = nil, modifierSequence: (() -> UInt64)? = nil,
          onCaptured: @escaping () -> Void = {}, onCompleted: @escaping (Result<Void, Error>) -> Void = { _ in },
          report: @escaping (String) -> Void = { _ in },
-         diagnostic: @escaping (String) -> Void = { DiagnosticLog.shared.record($0) }) {
+         diagnostic: @escaping (String) -> Void = { DiagnosticLog.shared.record($0) },
+         textLog: DiagnosticLog = .shared) {
         self.sources = sources; self.isAvailable = isAvailable; self.targetPID = targetPID
         self.revision = revision; self.isTrusted = isTrusted; self.captureWindow = captureWindow
-        self.prepareClipboard = prepareClipboard
+        self.textLog = textLog
+        self.prepareClipboard = prepareClipboard ?? {
+            try await WindowsClipboardReader.shared.prepare(revision: $0, includeDiagnosticText: textLog.textEnabled)
+        }
         self.readiness = readiness ?? ExplicitPasteShortcut(isolatedSoftwareCommand: true, interceptedPaste: true,
             targetIsFrontmost: { targetPID() == $0 })
         self.post = post; self.pause = pause; self.onCaptured = onCaptured
@@ -160,6 +163,10 @@ final class WindowsAppPasteMonitor {
                 let prepared = try await self.prepareClipboard(capturedRevision)
                 try validateContext()
                 trace("stage=clipboard-read-ready revision=\(capturedRevision) type=\(prepared.type) bytes=\(prepared.bytes) readMs=\(Int((ProcessInfo.processInfo.systemUptime - readStarted) * 1000)) remoteReceipt=unverified")
+                if let text = prepared.diagnosticText {
+                    self.textLog.recordText(operation: id, client: "windows", revision: capturedRevision,
+                        type: prepared.type, value: text)
+                }
                 _ = try await self.readiness.waitUntilReady(targetPID: pid, validateTarget: validateContext,
                     onWaiting: { self.report("Windows App waiting: \($0)"); trace("stage=wait-modifiers \($0)") })
                 let modifiers = self.currentModifierSequence

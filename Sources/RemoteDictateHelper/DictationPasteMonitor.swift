@@ -55,6 +55,7 @@ final class DictationPasteMonitor {
     private let onError: (Error) -> Void
     private let report: (String) -> Void
     private let diagnostic: (String) -> Void
+    private let textLog: DiagnosticLog
     private let sources: [DictationSource]
     private var history = ClipboardBaselineHistory()
     private var pending: Pending?
@@ -74,12 +75,14 @@ final class DictationPasteMonitor {
          now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          onCaptured: @escaping (UUID) -> Void, onError: @escaping (Error) -> Void,
          report: @escaping (String) -> Void = { _ in },
-         diagnostic: @escaping (String) -> Void = { DiagnosticLog.shared.record($0) }) {
+         diagnostic: @escaping (String) -> Void = { DiagnosticLog.shared.record($0) },
+         textLog: DiagnosticLog = .shared) {
         self.access = access
         self.board = board; self.targetPID = targetPID; self.isAvailable = isAvailable
         self.sources = sources; self.now = now
         self.onCaptured = onCaptured; self.onError = onError; self.report = report
         self.diagnostic = diagnostic
+        self.textLog = textLog
     }
 
     func start() throws {
@@ -273,6 +276,10 @@ final class DictationPasteMonitor {
             report("captured revision=\(payload.revision) characters=\(payload.text.count) intercepted=true encodingMarkerAdded=\(payload.encodingMarkerAdded) returnPolicy=\(event.clipboardReturn.rawValue)")
             diagnostic("op=\(id) payloadMetadata items=\(payload.snapshot.items.count) bytes=\(payload.snapshot.items.flatMap { $0 }.reduce(0) { $0 + $1.data.count }) formats=\(payload.snapshot.items.flatMap { $0 }.map { DiagnosticLog.token($0.type.rawValue) }.joined(separator: ",")) contents=excluded")
             onCaptured(id)
+            if textLog.textEnabled {
+                textLog.recordText(operation: id, client: "screen-sharing", revision: payload.revision,
+                    type: NSPasteboard.PasteboardType.string.rawValue, value: .capture(payload.text))
+            }
             return true
         } catch { diagnostic("capture.rejected revision=\(revision) reason=\(error)"); history.clear(); onError(error) }
         return remove

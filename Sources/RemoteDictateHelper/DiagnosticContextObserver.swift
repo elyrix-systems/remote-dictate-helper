@@ -21,7 +21,7 @@ final class DiagnosticContextObserver {
         guard log.enabled, timer == nil else { return }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") ?? "unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") ?? "unknown"
-        log.record("diagnostics.start version=\(version) build=\(build) os=\(ProcessInfo.processInfo.operatingSystemVersionString) timezone=\(TimeZone.current.identifier) utcOffset=\(TimeZone.current.secondsFromGMT()) pid=\(ProcessInfo.processInfo.processIdentifier) contents=excluded")
+        log.record("diagnostics.start version=\(version) build=\(build) os=\(ProcessInfo.processInfo.operatingSystemVersionString) timezone=\(TimeZone.current.identifier) utcOffset=\(TimeZone.current.secondsFromGMT()) pid=\(ProcessInfo.processInfo.processIdentifier) contents=\(log.textEnabled ? "captured-source-text" : "excluded")")
         let workspace = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didActivateApplicationNotification, NSWorkspace.willSleepNotification,
                      NSWorkspace.didWakeNotification, NSWorkspace.screensDidSleepNotification,

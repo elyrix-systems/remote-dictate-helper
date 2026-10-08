@@ -18,6 +18,14 @@ class AppToolsTests(unittest.TestCase):
         with self.assertRaises(tools.ToolError):
             tools.bundle_metadata("1.1.0", "110.7.1", "yes")
 
+    def test_transcript_logging_requires_both_explicit_flags(self):
+        for diagnostics in ("0", "1"):
+            self.assertNotIn("RDDiagnosticTextLogging", tools.bundle_metadata("1.1.1", "111.1.0", diagnostics))
+        self.assertTrue(tools.bundle_metadata("1.1.1", "111.1.0", "1", "1")["RDDiagnosticTextLogging"])
+        for diagnostics, text in (("0", "1"), ("1", "yes")):
+            with self.assertRaises(tools.ToolError):
+                tools.bundle_metadata("1.1.1", "111.1.0", diagnostics, text)
+
     def test_local_signing_preference_retains_certificate_and_allows_explicit_override(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -24,7 +24,7 @@ swiftc -swift-version 6 -parse-as-library -I "$test_module_dir" \
   "$runtime/CapturedClipboard.swift" "$runtime/LocalClipboardRestoration.swift" \
   "$runtime/DeferredClipboardCompletion.swift" "$runtime/AccessibilityPermission.swift" \
   "$runtime/OperationalLog.swift" "$runtime/LaunchAtLogin.swift" "$runtime/DictationSourceSettings.swift" \
-  "$runtime/DiagnosticLog.swift" \
+  "$runtime/DiagnosticLog.swift" "$runtime/DiagnosticText.swift" \
   "$runtime/ExplicitPasteShortcut.swift" \
   "$runtime/WindowsAppPasteShortcut.swift" "$runtime/WindowsAppPasteMonitor.swift" "$runtime/WindowsClipboardReader.swift" \
   "$runtime/GuardedPaste.swift" "$runtime/ScreenSharingClipboardMenu.swift" \

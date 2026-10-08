@@ -51,10 +51,44 @@ second, with 50 ms per-call timeouts and one outstanding probe. Only changed
 states are logged. AX references are opaque, session-local comparison aids, not
 remote window titles or proof of a remote text caret.
 
-No transcript, clipboard bytes, ordinary typed characters/scan codes, window
+With the ordinary diagnostic flag, no transcript, clipboard bytes, ordinary typed characters/scan codes, window
 titles, document paths, URLs, connection host names or screenshots are recorded.
 Bundle identifiers still describe app usage: keep diagnostic logs local unless
 the owner explicitly chooses to share them.
+
+## Optional local transcript capture
+
+Only enable this after the owner explicitly requests recording dictated text.
+`REMOTE_DICTATE_DIAGNOSTIC_TEXT=1` additionally requires
+`REMOTE_DICTATE_DIAGNOSTICS=1`. Both flags are off in ordinary builds; metadata
+diagnostics alone never retain text. The menu explicitly shows **Diagnostic text
+logging enabled** when both are enabled. This is a build setting, not a change
+to the normal installation or release configuration.
+
+For each accepted operation with a valid captured revision, `local-text-captured`
+records the local source text, operation UUID, client, revision and format. The
+`payload` suffix is JSON: Russian, line breaks, quotes and control characters
+round-trip without creating extra log lines. The text is limited to 64 KiB of
+UTF-8 per operation, ending on a scalar boundary; `truncated` explicitly marks a
+longer result. Invalid UTF-8 or a rich-only Windows representation is recorded as
+unavailable, without attempting to decode RTF/HTML or changing paste eligibility.
+Reads that fail or lose their context before acceptance have metadata only.
+
+This uses bytes already read by the isolated reader for Windows, or the already
+captured Screen Sharing text. There are no additional provider reads, clipboard
+writes or polls for contents. Original clipboard snapshots and ordinary manual
+copies are not recorded. At most eight text records may be queued; overflow is
+dropped, never allowed to block input. JSON encoding and file I/O use the existing
+writer queue. Text goes only to the private rotating debug log, never the
+operational log. Opening that log also enforces mode 0600 on an existing file.
+
+**This is not the text observed in the remote field.** `remoteReceipt=unverified`
+is intentional: local AX exposes the Windows App container, not the remote
+Codex input, and the Mac pasteboard is not an independent view of the Windows
+clipboard. Follow the operation UUID to see whether input was sent or cancelled;
+a captured text record can precede cancellation. Actual receipt requires the
+owner's observation or a separately arranged observer on Windows. Do not publish
+these logs in an issue or PR: they now contain dictated content.
 
 ## Timing and evidence limits
 
@@ -82,6 +116,8 @@ Windows adapter, independently of the diagnostic flag. This is a protocol change
 under evaluation, not an effect of enabling logging. It does not change the Apple
 Screen Sharing transaction. It neither republishes the clipboard nor inserts
 locally, activates another app, retries a paste or retains/logs text.
+The separate opt-in above can retain a bounded diagnostic copy of already read
+plain text; ordinary builds still discard it.
 
 Risky assumption: requesting the source's text representation before replay may
 materialize data that Windows App otherwise obtains too late. Apple's

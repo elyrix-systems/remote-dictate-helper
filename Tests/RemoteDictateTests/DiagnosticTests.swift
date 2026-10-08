@@ -1,5 +1,62 @@
 import AppKit
 
+func testDiagnosticTextLogging() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let destination = directory.appendingPathComponent("debug.log")
+    let text = "RD-synthetic Привет 👋\n1. \"Один\"\n2. Два\t\\\0"
+    let value = DiagnosticText.capture(text), operation = UUID()
+    for (enabled, textEnabled) in [(false, true), (true, false)] {
+        let log = DiagnosticLog(enabled: enabled, textEnabled: textEnabled, destination: destination)
+        log.recordText(operation: operation, client: "windows", revision: 42, type: "public.utf8-plain-text", value: value)
+        log.flush(); expectFalse(FileManager.default.fileExists(atPath: destination.path))
+    }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try "".write(to: destination, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: destination.path)
+    let log = DiagnosticLog(enabled: true, textEnabled: true, destination: destination)
+    log.recordText(operation: operation, client: "windows", revision: 42, type: "public.utf8-plain-text", value: value)
+    log.flush()
+    let line = try String(contentsOf: destination, encoding: .utf8)
+    expectEqual(line.split(separator: "\n").count, 1, "Text cannot forge log entries")
+    expectTrue(line.contains("op=\(operation) client=windows stage=local-text-captured revision=42"))
+    expectTrue(line.contains("remoteReceipt=unverified"))
+    let json = try expectUnwrap(line.components(separatedBy: " payload=").last).trimmingCharacters(in: .newlines)
+    let payload = try JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any]
+    expectEqual(payload["text"] as? String, text, "Russian, line breaks and control characters round trip")
+    expectEqual(payload["truncated"] as? Bool, false)
+    expectEqual(try FileManager.default.attributesOfItem(atPath: destination.path)[.posixPermissions] as? Int, 0o600)
+
+    for unit in ["я", "€", "🙂"] {
+        let original = "a" + String(repeating: unit, count: DiagnosticText.maximumBytes)
+        let bounded = DiagnosticText.capture(original)
+        let prefix = try expectUnwrap(bounded.text)
+        expectTrue(bounded.truncated && original.hasPrefix(prefix))
+        expectTrue(prefix.utf8.count <= DiagnosticText.maximumBytes)
+    }
+    let exact = DiagnosticText.capture(String(repeating: "a", count: DiagnosticText.maximumBytes))
+    expectFalse(exact.truncated)
+    expectNil(DiagnosticText.capture(Data([0xff])).text)
+    let malformed = Data(repeating: 0x61, count: DiagnosticText.maximumBytes - 1) + Data([0xff, 0x61])
+    expectNil(DiagnosticText.capture(malformed).text, "Truncation must not silently remove invalid bytes")
+    let long = String(repeating: "a", count: DiagnosticText.maximumBytes + 1)
+    log.recordText(operation: operation, client: "windows", revision: 43, type: "text", value: .capture(long))
+    log.flush()
+    let last = try String(contentsOf: destination, encoding: .utf8).split(separator: "\n").last!
+    let lastPayload = try JSONSerialization.jsonObject(with: Data(last.components(separatedBy: " payload=").last!.utf8)) as! [String: Any]
+    expectEqual((lastPayload["text"] as? String)?.utf8.count, DiagnosticText.maximumBytes,
+                "Text records must bypass the ordinary 4096-character metadata limit")
+    expectEqual(lastPayload["truncated"] as? Bool, true)
+
+    let protected = directory.appendingPathComponent("protected")
+    try "keep".write(to: protected, atomically: true, encoding: .utf8)
+    let link = directory.appendingPathComponent("link.log")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: protected)
+    let refused = DiagnosticLog(enabled: true, textEnabled: true, destination: link)
+    refused.recordText(operation: operation, client: "windows", revision: 42, type: "text", value: value)
+    refused.flush(); expectEqual(try String(contentsOf: protected, encoding: .utf8), "keep")
+}
+
 func testDiagnosticLogStorage() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -28,6 +85,31 @@ func testDiagnosticLogStorage() throws {
     let redirected = DiagnosticLog(enabled: true, destination: link, maximumBytes: 1024)
     redirected.record("must not follow symlink"); redirected.flush()
     expectEqual(try String(contentsOf: protected, encoding: .utf8), "keep")
+}
+
+@MainActor
+func testScreenSharingDiagnosticTextCapture() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let destination = directory.appendingPathComponent("debug.log")
+    let log = DiagnosticLog(enabled: true, textEnabled: true, destination: destination)
+    let board = NSPasteboard(name: .init("RD-Text-Log-\(UUID())"))
+    defer { board.releaseGlobally() }
+    var id: UUID?
+    let monitor = DictationPasteMonitor(board: board, access: eagerTestClipboardAccess(), targetPID: { 100 },
+        isAvailable: { true }, onCaptured: { id = $0 }, onError: { fail("\($0)") }, textLog: log)
+    board.clearContents(); board.setString("PRIVATE-ORIGINAL", forType: .string)
+    monitor.sample()
+    board.clearContents(); board.setString("RD-synthetic-Привет\nДва", forType: .string)
+    let revision = board.changeCount
+    expectTrue(monitor.observe(.init(kind: .down, key: 9, command: true, pid: 42, fromDictation: true)))
+    log.flush()
+    let line = try String(contentsOf: destination, encoding: .utf8)
+    expectTrue(line.contains("op=\(try expectUnwrap(id)) client=screen-sharing"))
+    expectTrue(line.contains("RD-synthetic-Привет") && line.contains("remoteReceipt=unverified"))
+    expectFalse(line.contains("PRIVATE-ORIGINAL"), "Baseline clipboard must never enter text logging")
+    expectEqual(board.changeCount, revision)
+    monitor.discard(try expectUnwrap(id))
 }
 
 @MainActor

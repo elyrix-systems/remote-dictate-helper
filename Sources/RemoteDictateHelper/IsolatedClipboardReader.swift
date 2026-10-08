@@ -30,6 +30,7 @@ enum ClipboardReaderProcess {
         var text: String?
         var type: String?
         var bytes: Int?
+        var diagnosticText: DiagnosticText?
         var error: String?
     }
 
@@ -37,14 +38,15 @@ enum ClipboardReaderProcess {
         let args = CommandLine.arguments
         guard args.dropFirst().first == argument else { return false }
         guard args.count == 5, let revision = Int(args[3]),
-              ["snapshot", "text"].contains(args[4]) else { return true }
+              ["snapshot", "text", "text-diagnostic"].contains(args[4]) else { return true }
         let response: Response
         do {
             let board = NSPasteboard(name: .init(args[2]))
             guard board.changeCount == revision else { throw LocalClipboardError.changed }
-            if args[4] == "text" {
-                let result = try WindowsClipboardReader.readOnce(name: board.name, revision: revision)
-                response = Response(type: result.type, bytes: result.bytes)
+            if args[4] != "snapshot" {
+                let result = try WindowsClipboardReader.readOnce(name: board.name, revision: revision,
+                    includeDiagnosticText: args[4] == "text-diagnostic")
+                response = Response(type: result.type, bytes: result.bytes, diagnosticText: result.diagnosticText)
             } else {
                 let snapshot = try LocalClipboardSnapshot.capture(board)
                 let text = board.string(forType: .string)
@@ -77,6 +79,7 @@ final class IsolatedClipboardReader: Sendable {
     init(executable: URL = Bundle.main.executableURL!) { self.executable = executable }
 
     func read(name: NSPasteboard.Name, revision: Int, textOnly: Bool = false,
+              includeDiagnosticText: Bool = false,
               timeout: TimeInterval = 0.25) async throws -> ClipboardReaderProcess.Response {
         try Task.checkCancellation()
         guard reserve() else { throw IsolatedClipboardError.busy }
@@ -85,7 +88,7 @@ final class IsolatedClipboardReader: Sendable {
             try await withCheckedThrowingContinuation { continuation in
                 queue.async { [executable, slot] in
                     let result = Result { try Self.readProcess(executable: executable, name: name,
-                        revision: revision, textOnly: textOnly, request: request) }
+                        revision: revision, textOnly: textOnly, includeDiagnosticText: includeDiagnosticText, request: request) }
                     slot.signal()
                     continuation.resume(with: result)
                 }
@@ -109,7 +112,7 @@ final class IsolatedClipboardReader: Sendable {
     }
 
     private static func spawn(executable: URL, name: NSPasteboard.Name, revision: Int,
-                              textOnly: Bool, output: Pipe) throws -> pid_t {
+                              textOnly: Bool, includeDiagnosticText: Bool, output: Pipe) throws -> pid_t {
         var actions: posix_spawn_file_actions_t?
         guard posix_spawn_file_actions_init(&actions) == 0 else { throw IsolatedClipboardError.unavailable }
         defer { posix_spawn_file_actions_destroy(&actions) }
@@ -129,7 +132,7 @@ final class IsolatedClipboardReader: Sendable {
             throw IsolatedClipboardError.unavailable
         }
         let arguments = [executable.path, ClipboardReaderProcess.argument, name.rawValue,
-                         String(revision), textOnly ? "text" : "snapshot"]
+                         String(revision), textOnly ? (includeDiagnosticText ? "text-diagnostic" : "text") : "snapshot"]
         let argv = arguments.map { strdup($0) } + [nil]
         let environment = ProcessInfo.processInfo.environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
         defer { argv.forEach { free($0) }; environment.forEach { free($0) } }
@@ -144,11 +147,11 @@ final class IsolatedClipboardReader: Sendable {
     }
 
     private static func readProcess(executable: URL, name: NSPasteboard.Name, revision: Int,
-                                    textOnly: Bool, request: Request) throws -> ClipboardReaderProcess.Response {
+                                    textOnly: Bool, includeDiagnosticText: Bool, request: Request) throws -> ClipboardReaderProcess.Response {
         try request.check()
         let output = Pipe()
         let pid = try spawn(executable: executable, name: name, revision: revision,
-                            textOnly: textOnly, output: output)
+                            textOnly: textOnly, includeDiagnosticText: includeDiagnosticText, output: output)
         try? output.fileHandleForWriting.close()
         defer {
             // Reap our exact child directly. Foundation's waitUntilExit run-loop

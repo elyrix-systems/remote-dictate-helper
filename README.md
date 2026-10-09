@@ -62,9 +62,12 @@ even when physical Command+V and RDP clipboard redirection work.
 
 1. The helper intercepts the selected dictation app's paste in the active
    Windows App window.
-2. It waits for physical modifiers to be released, provided the same window,
-   input position and clipboard revision remain current.
-3. It sends one complete native Command+V sequence, including Command press and
+2. It prepares the current local clipboard text and waits for physical modifiers
+   to be released while the original window, input and clipboard remain current.
+3. It briefly moves focus to a transparent helper window and back to the same
+   Windows App window. This refreshes the client before paste; a slight focus
+   flicker may be visible. A changed destination or clipboard cancels the paste.
+4. It sends one complete native Command+V sequence, including Command press and
    release events and device-specific modifier flags. It never sends Backspace.
 
 RDP handles clipboard redirection. This path **does not write the clipboard or
@@ -227,7 +230,8 @@ Fork the repository and send a pull request; see [CONTRIBUTING.md](CONTRIBUTING.
 The regression suite covers capture, cancellation, clipboard ownership and
 restoration, formatting, key-state guards and exactly one paste without deletion.
 Windows App tests also cover consecutive dictations, clipboard revision changes,
-modifier release, focus/input cancellation and releasing owned keys during Quit.
+modifier release, guarded focus refresh, focus/input cancellation and releasing
+owned keys during Quit.
 It uses disposable named pasteboards and mocked input, never real keystrokes.
 GitHub Actions runs those checks on a standard macOS runner and scans for secrets.
 

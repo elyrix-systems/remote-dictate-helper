@@ -23,13 +23,10 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     private var contextCancelled = false
     private var quitAfterClipboardRestore = false
     private let diagnosticContext = DiagnosticContextObserver()
-    private var windowsProbe: WindowsClipboardProbe?
-    private let windowsFocusExperiment = WindowsFocusRefreshProbe.dictationExperimentEnabled(info: Bundle.main.infoDictionary ?? [:])
     private lazy var launchAtLogin = LaunchAtLogin(report: { [weak self] in self?.appendLog("login item \($0)") })
     private var busy: Bool {
         runningTask != nil || sharedClipboardLease != nil || clipboardRestoration.hasPendingRestore || clipboardSession != nil
             || windowsMonitor?.isBusy == true
-            || windowsProbe?.isBusy == true
     }
     private var canAcceptPaste: Bool { !quitAfterClipboardRestore && !busy }
     private lazy var clipboardRestoration = LocalClipboardRestoration(onOutcome: { [weak self] outcome, receipt in
@@ -67,7 +64,6 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         configureMonitor()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
         appendLog("app launched version=\(version)")
-        if windowsFocusExperiment { appendLog("experimental Windows focus refresh enabled for dictation") }
         let loginNeedsAttention = launchAtLogin.registerOnFirstLaunch()
         if loginNeedsAttention || SettingsReadiness.shouldOpenOnLaunch(completed: UserDefaults.standard.bool(forKey: SettingsWindowController.completionKey),
                                                accessibility: AccessibilityPermission.isTrusted()) {
@@ -79,12 +75,11 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         diagnosticContext.stop(); DiagnosticLog.shared.flush()
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        windowsProbe?.cancel()
         cancelCurrentOperation()
         monitor?.stop(); monitor = nil
-        guard clipboardRestoration.hasPendingRestore || sharedClipboardLease != nil || windowsProbe?.isBusy == true else { return .terminateNow }
+        guard clipboardRestoration.hasPendingRestore || sharedClipboardLease != nil else { return .terminateNow }
         quitAfterClipboardRestore = true
-        setStatus(windowsProbe?.isBusy == true ? "Finishing clipboard test before quit" : "Finishing before quit; return to Screen Sharing")
+        setStatus("Finishing before quit; return to Screen Sharing")
         return .terminateLater
     }
     private func configureMenu() {
@@ -102,14 +97,6 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
             let diagnostics = NSMenuItem(title: DiagnosticLog.shared.textEnabled
                 ? "Diagnostic text logging enabled" : "Diagnostic logging enabled", action: nil, keyEquivalent: "")
             diagnostics.isEnabled = false; menu.addItem(diagnostics)
-            if windowsFocusExperiment {
-                let experiment = NSMenuItem(title: "Windows focus refresh experiment enabled", action: nil, keyEquivalent: "")
-                experiment.isEnabled = false; menu.addItem(experiment)
-            }
-            let probe = NSMenuItem(title: "Windows Clipboard Test…", action: #selector(openWindowsClipboardTest), keyEquivalent: "")
-            probe.target = self; menu.addItem(probe)
-            let focusProbe = NSMenuItem(title: "Windows Focus Test…", action: #selector(openWindowsFocusTest), keyEquivalent: "")
-            focusProbe.target = self; menu.addItem(focusProbe)
         }
         for (title, action, key) in [
             ("Settings…", #selector(openSettings), ","),
@@ -123,47 +110,6 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         quit.target = self; menu.addItem(quit)
     }
     @objc private func quit() { NSApp.terminate(nil) }
-    @objc private func openWindowsClipboardTest() {
-        guard DiagnosticLog.shared.enabled, canAcceptPaste else { return }
-        let alert = NSAlert()
-        alert.messageText = "Test Windows clipboard timing"
-        alert.informativeText = "Use an empty Notepad document on the remote Windows computer. Choose a test, then click that document within 20 seconds. Do not dictate, type or switch windows until the test finishes.\n\nCompare 6 pastes runs SHORT (650 ms), HOLD (5 seconds) and WAIT (5 seconds, paste delayed 1 second), twice without changing focus. Allow 35 seconds. Each trial inserts one numbered marker.\n\nYour original local clipboard is restored afterward unless you copy something new. This is a diagnostic test, not a fix."
-        alert.addButton(withTitle: "Compare 6 pastes")
-        alert.addButton(withTitle: "Hold NEW for 5 seconds")
-        alert.addButton(withTitle: "Restore OLD after 650 ms")
-        alert.addButton(withTitle: "Cancel")
-        let response = alert.runModal()
-        let mode: WindowsClipboardProbe.Mode
-        switch response {
-        case .alertFirstButtonReturn: mode = .comparison
-        case .alertSecondButtonReturn: mode = .sustained
-        case .alertThirdButtonReturn: mode = .transient
-        default: return
-        }
-        startWindowsProbe(mode)
-    }
-    @objc private func openWindowsFocusTest() {
-        guard DiagnosticLog.shared.enabled, canAcceptPaste else { return }
-        let alert = NSAlert()
-        alert.messageText = "Compare clipboard focus refresh"
-        alert.informativeText = "Click an empty remote text field after starting. Do not type, dictate or switch windows for 45 seconds.\n\nSix test pastes alternate DIRECT and REFRESH. Before each REFRESH, a transparent helper window briefly takes focus and returns to the same Windows App window. There is no visible popup. Any other input or clipboard change stops the test.\n\nThis synthetic comparison is separate from dictation. Your original local clipboard is restored unless another app or you replace it."
-        alert.addButton(withTitle: "Start focus test")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        startWindowsProbe(.focusComparison)
-    }
-    private func startWindowsProbe(_ mode: WindowsClipboardProbe.Mode) {
-        guard DiagnosticLog.shared.enabled, canAcceptPaste else { return }
-        let probe = WindowsClipboardProbe(input: { [weak self] in self?.windowsMonitor?.diagnosticInputStamp },
-            status: { [weak self] in self?.setStatus($0) }, finished: { [weak self] cleanupSucceeded in
-                guard let self, self.quitAfterClipboardRestore,
-                      !self.clipboardRestoration.hasPendingRestore, self.sharedClipboardLease == nil else { return }
-                self.completePendingQuit(success: cleanupSucceeded)
-            })
-        windowsProbe = probe
-        do { try probe.start(mode) }
-        catch { setStatus("Test unavailable: \(error)") }
-    }
     @objc private func openProductWebsite() {
         guard let url = URL(string: "https://elyrix-systems.com/remote-dictate-helper/") else { return }
         NSWorkspace.shared.open(url)
@@ -195,15 +141,8 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         }, report: { [weak self] in self?.appendLog("capture \($0)") })
         do { try next.start(); monitor = next }
         catch { lastError = String(describing: error); setStatus("Error: \(error)"); appendLog("monitor start error=\(error)") }
-        let focusRefresh: WindowsFocusRefreshProbe.Action?
-        if windowsFocusExperiment {
-            focusRefresh = { pid, stable, target, log in
-                try await WindowsFocusRefreshProbe.run(targetPID: pid, validateStable: stable, validateTarget: target, log: log)
-            }
-        } else { focusRefresh = nil }
         let windows = WindowsAppPasteMonitor(sources: settings.sources,
             isAvailable: { [weak self] in self?.canAcceptPaste ?? false },
-            focusRefresh: focusRefresh,
             onCaptured: { [weak self] in
                 self?.lastError = nil; self?.setStatus("Captured: preparing Windows App paste")
             }, onCompleted: { [weak self] result in

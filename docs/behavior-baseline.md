@@ -429,3 +429,14 @@ acceptance does not establish prolonged stability, sleep/reconnection behavior
 or new physical checks of other dictation sources. The user accepts the residual
 visual effect, so further appearance changes are deferred rather than altering
 the working activation sequence.
+
+## Cleanup for release 1.1.2
+
+The owner accepted 111.1.7 with slight remaining focus flicker and requested
+removal of temporary runtime tests. Release preparation promotes that guarded
+focus refresh to the normal Windows path for every selected source. The synthetic
+clipboard publisher, diagnostic test menus and experimental build switch are
+removed; production regression tests remain. The old procedures and design notes
+are preserved in the [experiment archive](experiments/windows-clipboard-2026-10-09.md),
+with implementation commits. This cleanup is not an additional physical trial or
+a claim that every intermittent Windows App issue is resolved.

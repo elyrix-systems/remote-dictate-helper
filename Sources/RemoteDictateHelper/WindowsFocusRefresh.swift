@@ -1,16 +1,11 @@
 import AppKit
 
-/// Diagnostic only. A real activation round trip with a transparent owned window,
-/// not a private
-/// Windows App notification or an acknowledgement of remote clipboard delivery.
+/// Refresh Windows App activation using a transparent owned window before paste.
+/// This is a real focus round trip, not an acknowledgement of RDP delivery.
 @MainActor
-enum WindowsFocusRefreshProbe {
+enum WindowsFocusRefresh {
     typealias Action = @MainActor (pid_t, @MainActor () throws -> Void,
         @MainActor () throws -> Void, @MainActor (String) -> Void) async throws -> Void
-
-    static func dictationExperimentEnabled(info: [String: Any]) -> Bool {
-        info["RDDiagnosticLogging"] as? Bool == true && info["RDWindowsFocusRefreshExperiment"] as? Bool == true
-    }
 
     enum Phase: String { case acquiringHelper, returningToTarget }
     enum Failure: Error { case timeout(Phase), unexpectedFocus, activationRefused }
@@ -31,8 +26,8 @@ enum WindowsFocusRefreshProbe {
                         validateStable: @MainActor () throws -> Void,
                         validateTarget: @MainActor () throws -> Void,
                         log: @MainActor (String) -> Void) async throws {
-        // A failure deadline, not a fixed wait. Ordinary builds never call this
-        // from dictation. No retries, input or clipboard access occur here.
+        // A failure deadline, not a fixed wait. No retries, input or clipboard
+        // access occur here.
         let started = e.now(), deadline = started + 1
         var phase = Phase.acquiringHelper
         defer { e.close() }
@@ -41,7 +36,7 @@ enum WindowsFocusRefreshProbe {
             let state = "frontPID=\(e.front().map(String.init) ?? "none") ownsKeyWindow=\(e.ownsKeyWindow()) \(e.nativeState())"
             guard force || state != lastState else { return }
             lastState = state
-            log("stage=focus-probe-\(stage) phase=\(phase.rawValue) elapsedMs=\(Int((e.now() - started) * 1000)) \(state)")
+            log("stage=focus-refresh-\(stage) phase=\(phase.rawValue) elapsedMs=\(Int((e.now() - started) * 1000)) \(state)")
         }
         func check() throws {
             try Task.checkCancellation(); try validateStable()
@@ -61,7 +56,7 @@ enum WindowsFocusRefreshProbe {
                 try await e.pause()
             }
             try check()
-            log("stage=focus-probe-owned elapsedMs=\(Int((e.now() - started) * 1000))")
+            log("stage=focus-refresh-owned elapsedMs=\(Int((e.now() - started) * 1000))")
             phase = .returningToTarget
             guard e.returnToTarget() else { throw Failure.activationRefused }
             traceState("return-requested", force: true)
@@ -76,7 +71,7 @@ enum WindowsFocusRefreshProbe {
                 try await e.pause()
             }
             try check(); try validateTarget()
-            log("stage=focus-probe-returned elapsedMs=\(Int((e.now() - started) * 1000)) remoteReceipt=unverified")
+            log("stage=focus-refresh-returned elapsedMs=\(Int((e.now() - started) * 1000)) remoteReceipt=unverified")
         } catch {
             traceState("failed", force: true)
             throw error
@@ -88,7 +83,7 @@ enum WindowsFocusRefreshProbe {
         // A transient NSPanel plus activate() did not acquire focus in 111.1.4.
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 64),
                               styleMask: [.titled], backing: .buffered, defer: false)
-        window.title = "Windows clipboard test"
+        window.title = "Remote Dictate Helper"
         window.isReleasedWhenClosed = false
         window.animationBehavior = .none
         // Keep the proven normal-window activation path, but do not render a
@@ -98,9 +93,6 @@ enum WindowsFocusRefreshProbe {
         window.hasShadow = false
         window.ignoresMouseEvents = true
         window.collectionBehavior = [.transient, .moveToActiveSpace, .fullScreenAuxiliary]
-        let label = NSTextField(labelWithString: "Checking focus refresh…")
-        label.frame = NSRect(x: 20, y: 22, width: 260, height: 20)
-        window.contentView?.addSubview(label)
         window.center()
         return window
     }

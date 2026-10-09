@@ -103,6 +103,7 @@ func testBlockedAdmissionLiveness() async throws {
         targetPID: { usleep(120_000); return 101 }, revision: { 1 },
         prepareClipboard: { _ in fail("Late admission must not even start a reader") },
         isTrusted: { true }, captureWindow: { _ in { } },
+        focusRefresh: { _, _, _, _ in fail("Expired capture must not change focus") },
         post: { _ in fail("Expired Windows capture cannot post any input") }, onCaptured: { captured += 1 })
     let decision = PasteCaptureDecision(wait: 0.02)
     expectFalse(windows.observe(sourceEvent, decision: decision))

@@ -26,6 +26,7 @@ The custom native runner works with Command Line Tools without XCTest.
 | Clipboard | Full-format original restoration, UTF-8 HTML transport, empty originals, clipboard ownership, newer/equal-text copies and restoration deadlines. |
 | Input | Exactly one private Command+V; permission/target/modifier refusal; mid-sequence release; HID residue guards and no retry. |
 | Windows App | Consecutive source pastes, busy and revision guards, manual/local/self input exclusion, complete private Command+V flags/types, Fn release, target/window/input/clipboard cancellation, balanced release on Quit and disabled filter. No clipboard writes or real keystrokes. |
+| Windows focus refresh | All selected sources and repeated pastes refresh before keys; both activation phases, deadline/refusal, window cleanup, other-app/window/input/modifier/revision/trust changes, Quit and disabled filters stop without a late paste. Transparent key-eligible window construction; no actual activation. |
 | Clipboard isolation | Real subprocess reads of rich/multiple-item and deferred named boards; a provider blocked for 60 seconds cannot block the main actor; timeout/cancellation reaps only the owned reader; following revisions remain readable; expired capture cannot replay. Full capture/release/restoration uses the production asynchronous reader. |
 | Windows clipboard preparation | Read before all native keys; named-board text/rich formats unchanged, empty/missing/stale data refused, timeout and cancellation release the caller, one owned reader with reaping on timeout, late completion cannot replay, context changes during reading cancel input. |
 | Completion | Deferred cleanup readiness, single completion attempt, busy refusal and errors. |
@@ -94,7 +95,7 @@ log or replace physical integration checks with mocked events.
 
 ## Local hang-fix check
 
-Use the signed diagnostic candidate on the local Mac. Confirm Settings and Quit
+Use a signed diagnostic build on the local Mac. Confirm Settings and Quit
 remain responsive while entering/leaving Screen Sharing, including after normal
 sleep. Repeat ordinary clipboard paste and a synthetic dictation with exact local
 clipboard restoration. Repeat a Windows App dictation; record stale remote data
@@ -103,7 +104,7 @@ must name baseline/candidate/source-return, the revision and failure without tex
 Do not trigger an artificial stall on the general clipboard or force-stop a source
 app to test this. The deliberate hung-provider test uses a disposable named board.
 
-For the input-filter liveness candidate, repeat Flow and superwhisper dictations
+For input-filter liveness checks, repeat Flow and superwhisper dictations
 in both clients and check that the source, helper menu and normal keyboard input
 remain responsive. Verify one insertion and the existing source/target clipboard
 restoration behavior. A recovered process sample cannot establish the cause of a
@@ -131,114 +132,34 @@ markers and select the dictation app in Settings; do not change administrator po
 5. Test repeated operations and Quit after installation. Record any source warning
    separately from remote text arrival. When investigating a source-specific issue,
    record its paste/clipboard settings and compare it with the shared contract.
-6. For the local clipboard-read candidate, repeat distinct phrases and the first
+6. Repeat distinct phrases and the first
    dictation after normal sleep/reconnection, without a preparatory local paste or
-   recopy. Compare `clipboard-read-ready` timing/revision with native input and the
+   recopy. Compare local read/focus-return timing and revision with native input and the
    actual remote result. Record stale text, missing input and any source warning
    separately. Successful reads alone do not validate RDP delivery or this fix.
 
-## Controlled Windows clipboard lifetime experiment
+## Windows focus refresh regression check
 
-Available only in a diagnostic build via **Windows Clipboard Test…**. Requires
-the user's local Mac, Accessibility and an empty remote Notepad document. Run
-when the remote screen is free. Do not use a real document, send a message,
-dictate, type or manually paste during a trial.
+The normal Windows App path now performs one guarded focus round trip before
+paste. Keep Windows App in the same session and remote field for at least three
+distinct dictations, without a local focus switch, copy or manual paste between
+them. Check fresh text each time, the intact prefix, no duplicate/`v`, source
+responsiveness and source restoration of the original local clipboard. Record
+any warning or visual flash; a slight focus flicker was accepted on the tested Mac.
+Repeat after ordinary sleep/reconnection and during extended use. Those scenarios
+remain integration checks, not guarantees from the component suite.
 
-1. Choose **Hold NEW for 5 seconds**, then click the empty Notepad field within
-   20 seconds. The probe seeds OLD before focus enters Windows App, waits one
-   second, publishes NEW with focus unchanged, and posts one native paste.
-   Record the complete visible marker (NEW, OLD, neither or another value).
-2. In a fresh empty field repeat **Restore OLD after 650 ms**. Native input is
-   identical; only the NEW publication lifetime changes. Check the original
-   local clipboard after cleanup without making a new copy first.
-3. Match each observation to its `client=windows-probe` operation and marker.
-   One success does not settle an intermittent failure. If the sustained mode
-   still produces old data, the investigation must test publication/focus or RDP
-   state rather than merely extend a source-restoration delay.
-4. **Compare 6 pastes** runs SHORT, HOLD and WAIT twice in the same field,
-   with one focus acquisition and one immutable input/window guard. SHORT holds
-   NEW for 650 ms and begins paste after 25 ms; HOLD changes only the lifetime
-   to five seconds; WAIT additionally waits one second before beginning paste.
-   Allow 35 seconds after clicking the empty field. Each trial has a different
-   numbered marker and one paste, with OLD between trials. Record all six
-   results, including missing, old or previous-trial markers. This isolates
-   lifetime and pre-paste delay without a focus refresh between individual
-   trials; it does not emulate every source format or establish remote receipt.
-   A new copy, input, window change or cancellation must prevent remaining trials.
+The helper's transparent window must acquire foreground/key status and return to
+the original Windows App window before keys are sent. Changing input, clipboard,
+modifiers, permission or destination cancels instead of retrying. Component tests
+mock activation for all default/custom sources, repeated revisions, both focus
+phases, timeouts/refusal, Quit and disabled filters. Construction checks do not
+show a window or prove macOS will grant activation. Local focus logs do not
+acknowledge remote receipt.
 
-For a separate physical-key control, explicitly repeat the comparison but press
-physical Command+V once immediately after the second automatic line appears.
-Do not switch focus or copy anything. The second trial keeps its NEW marker for
-five seconds. This deliberate input should stop subsequent automatic trials;
-wait 15 seconds for cleanup. Accept the comparison only when the diagnostic
-input timestamp falls after trial two's paste and before its OLD restoration.
-Otherwise repeat or mark it inconclusive. Record whether the physical paste
-inserted trial two's marker or the earlier value. This distinguishes physical
-from synthetic input without the focus switch present in ordinary copy/paste
-checks. Use only an empty test field and do not send its contents.
-
-Automatic tests use named pasteboards and mocked input. They verify both payload
-lifetimes, all-format and empty restoration, one sequence, cancellation before
-input, balanced keys/protected cleanup on Quit, target timeout and newer-copy
-protection. They do not exercise native Windows App or prove remote receipt.
-The comparison tests also verify distinct markers, all six bounded timings,
-exact restoration and cancellation between trials without a later replay.
-
-## Controlled Windows focus refresh experiment
-
-Requires the local Mac, Windows App, Accessibility and an empty remote test
-field. In a diagnostic build choose **Windows Focus Test… → Start focus test**,
-then click that field within 20 seconds. Do not type, dictate, copy or switch
-windows for 45 seconds. If all steps run, the explicit test briefly activates its
-own transparent helper window three times. No popup should appear and no messages
-should be sent from the field.
-If the test stops early, inspect the failure phase and
-foreground, key-window, visibility and active-Space metadata. An activation
-timeout is not a completed clipboard comparison; do not count unrun trials.
-
-Six numbered markers alternate DIRECT and REFRESH, with identical five-second
-publication lifetimes. Record each visible marker. In the previously failing
-session, the discriminating expectation is fresh REFRESH markers even when
-DIRECT reuses an older marker. Compare focus-return elapsed times, errors and
-clipboard revisions. Success is established by the visible remote text, never
-solely by local input or focus logs. Check original local restoration separately.
-
-Automatic tests mock all activation APIs and use only named pasteboards. They
-cover activation refusal/timeout, cancellation, unexpected third-party focus,
-another helper window, original target-window validation, changed input/revision,
-one activation request, window cleanup and no later paste after failure. A
-construction check verifies key eligibility without displaying a window;
-it does not prove that macOS will grant an activation request. Source
-dictation timing/warnings and long-running native client stability remain separate
-integration checks before enabling any automatic focus workaround.
-
-## Real dictation with experimental Windows focus refresh
-
-Requires a local bundle explicitly built with diagnostics and
-`REMOTE_DICTATE_WINDOWS_FOCUS_REFRESH=1`, a local source app, Accessibility,
-Windows App and an empty remote field. This flag is absent from normal builds.
-
-1. Confirm the menu's **Windows focus refresh experiment enabled** label. Keep
-   Windows App in its current session; do not restart it to erase the stale state.
-2. Copy a distinct original marker locally, then focus the empty remote field.
-3. Make three distinct numbered dictations into that field without an intervening
-   local focus switch, copy or manual paste. Do not send the resulting text.
-4. Check that all three current phrases arrived exactly once, no `v` appeared,
-   and neither the source nor remote input hung. Record any source warning or
-   visual flash. The transparent window must still acquire key status and return
-   to the original client window before paste; opacity is not evidence of focus.
-5. Paste into an empty local field after all three operations and confirm that
-   the source preserved the original local marker. Record the actual result;
-   helper completion alone cannot establish remote receipt or source restoration.
-6. Correlate each operation's captured revision, focus phases and one native paste
-   with native text-read metadata. A source revision change during refresh must
-   stop the operation before V, with no repeat or clipboard rewrite.
-
-Then repeat relevant hold/toggle modes for the other configured sources and
-observe normal extended use/sleep. Component tests mock focus for all default and
-custom source identities, repeated revisions, changed input/modifiers/revision,
-window/target/trust changes, timeout, disabled filter and Quit. These do not prove
-native client stability or compatibility with every source's clipboard lifetime.
+Historical trial procedures and their results are preserved in the
+[Windows experiment archive](experiments/windows-clipboard-2026-10-09.md).
+The experimental menus and synthetic clipboard publisher are no longer shipped.
 
 ## Validated baseline
 

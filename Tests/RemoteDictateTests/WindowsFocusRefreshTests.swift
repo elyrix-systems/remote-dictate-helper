@@ -1,21 +1,16 @@
 import AppKit
 
 @MainActor
-func testWindowsFocusRefreshProbe() async {
-    for info: [String: Any] in [[:], ["RDDiagnosticLogging": true], ["RDWindowsFocusRefreshExperiment": true],
-                               ["RDDiagnosticLogging": true, "RDWindowsFocusRefreshExperiment": false]] {
-        expectFalse(WindowsFocusRefreshProbe.dictationExperimentEnabled(info: info))
-    }
-    expectTrue(WindowsFocusRefreshProbe.dictationExperimentEnabled(info: ["RDDiagnosticLogging": true, "RDWindowsFocusRefreshExperiment": true]))
+func testWindowsFocusRefresh() async {
     _ = NSApplication.shared
-    let window = WindowsFocusRefreshProbe.makeWindow()
+    let window = WindowsFocusRefresh.makeWindow()
     expectFalse(window is NSPanel)
-    expectTrue(window.canBecomeKey, "Diagnostic window must accept key status")
+    expectTrue(window.canBecomeKey, "Focus window must accept key status")
     expectFalse(window.hidesOnDeactivate)
     expectEqual(window.alphaValue, 0, "Window must be transparent before first ordering")
     expectFalse(window.hasShadow)
     expectTrue(window.ignoresMouseEvents, "Transparent focus window must not intercept clicks")
-    expectFalse(window.isVisible, "Construction must not activate or show the diagnostic window")
+    expectFalse(window.isVisible, "Construction must not activate or show the focus window")
     window.close()
 
     @MainActor final class Fixture {
@@ -32,7 +27,7 @@ func testWindowsFocusRefreshProbe() async {
         var failure = ""
         var logs: [String] = []
         func run() async {
-            let environment = WindowsFocusRefreshProbe.Environment(helperPID: 9,
+            let environment = WindowsFocusRefresh.Environment(helperPID: 9,
                 front: { self.front }, ownsKeyWindow: { self.key },
                 show: { self.shown += 1 },
                 returnToTarget: { self.returned += 1; return self.activationAllowed },
@@ -46,11 +41,11 @@ func testWindowsFocusRefreshProbe() async {
                     await Task.yield()
                 })
             do {
-                try await WindowsFocusRefreshProbe.perform(targetPID: 42, environment: environment,
+                try await WindowsFocusRefresh.perform(targetPID: 42, environment: environment,
                     validateStable: {
-                        if !self.stable { throw WindowsClipboardProbe.Failure.changed }
+                        if !self.stable { throw WindowsAppPasteError.targetChanged }
                     }, validateTarget: {
-                        if self.front != 42 || !self.windowValid { throw WindowsClipboardProbe.Failure.changed }
+                        if self.front != 42 || !self.windowValid { throw WindowsAppPasteError.targetChanged }
                     }, log: { self.logs.append($0) })
                 succeeded = true
             } catch { succeeded = false; failure = String(describing: error) }
@@ -102,7 +97,7 @@ func testWindowsFocusRefreshProbe() async {
         expectTrue(timeout.time >= 1 && timeout.time < 1.1)
         let phase = lateReturn ? "returningToTarget" : "acquiringHelper"
         expectTrue(timeout.failure.contains(phase), "Timeout identifies the failed phase")
-        expectTrue(timeout.logs.last?.contains("stage=focus-probe-failed phase=\(phase)") == true)
+        expectTrue(timeout.logs.last?.contains("stage=focus-refresh-failed phase=\(phase)") == true)
         expectTrue(timeout.logs.last?.contains("frontPID=") == true)
         expectTrue(timeout.logs.last?.contains("ownsKeyWindow=") == true)
         expectTrue(timeout.logs.count < 8, "Unchanged readiness state does not spam the log")

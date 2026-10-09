@@ -109,7 +109,7 @@ Flow, superwhisper, Valis and apps added in Settings use this same boundary.
 The process lookup is injectable so regression tests can exercise the complete
 classification/capture path without launching those apps or posting real input.
 
-`idle → captured → local text readable → modifiers released → one native paste → idle`
+`idle → captured → local text readable → modifiers released → focus refreshed → one native paste → idle`
 
 `WindowsAppPasteMonitor` accepts the same configured source identities only when
 `com.microsoft.rdc.macos` is frontmost. It captures the pasteboard revision counter
@@ -132,6 +132,22 @@ and reaps that owned child before the slot is reused. A slow external provider
 cannot accumulate readers or cause late input. Target, window, trust, input sequence and revision are checked again
 after reading. Local data availability does not acknowledge RDP delivery; there
 is no blind retry or duplicate paste if Windows still holds old clipboard data.
+
+`WindowsFocusRefresh` then briefly activates a transparent, shadowless,
+mouse-transparent ordinary helper window and requests one return to the original
+Windows App process. It confirms actual foreground/key-window state at both
+phases; the one-second total failure deadline is not a fixed delay. The owned
+window closes on every exit. There are no private Windows App APIs, synthetic
+activation notifications or clipboard writes. A slight focus flicker can remain.
+
+During this round trip, captured input/modifier counters, generation, permission
+and clipboard revision remain guarded. Only the original target and the owned
+helper key window are allowed; third-party focus or another helper window stops
+the operation. The original client PID and AX window are checked again before
+keys, so changing destinations cannot result in a deferred paste. A source that
+restores its clipboard before readiness causes cancellation, not republishing.
+There is one activation request per phase and no retry. Synchronous AppKit calls
+are not made preemptible by the polling deadline.
 
 A separate instance of `PasteEventFilter` pairs the accepted V-down/V-up and
 tracks physical modifier changes. The existing Screen Sharing filter's event
@@ -161,7 +177,8 @@ changing either client protocol. The normal build leaves it disabled.
 | Risky assumption | Evidence | Scope |
 | --- | --- | --- |
 | A complete native modifier sequence fixes the observed Windows App `v` | Physical comparison of Flow/keyboard events and accepted local Flow trial; subsequent owner-confirmed insertion with superwhisper and Valis on 1.1.0 | The tested local Windows App setup; additional RDP endpoints and recording modes are separate integration checks |
-| Reading local text before the native sequence may help a deferred pasteboard provider | Apple's data-provider contract; a separate-process named-pasteboard spike materialized data without changing its revision; isolation/cancellation regression tests | External API + local component proof. Whether this fixes stale RDP data is an unconfirmed integration hypothesis, pending physical trials; local availability is not remote readiness |
+| Reading local text before the native sequence may help a deferred pasteboard provider | Apple's data-provider contract; a separate-process named-pasteboard spike materialized data without changing its revision; isolation/cancellation regression tests | External API + local component proof. Repeated physical trials remained stale with materialization alone; local availability is not remote readiness |
+| A guarded focus round trip refreshes the tested stale Windows App state | Same-session DIRECT/REFRESH comparison and accepted repeated Flow dictation with a transparent window | Local physical integration evidence. Minor flicker accepted; long-running, post-sleep and other-source refresh trials remain separate checks. See the [experiment archive](experiments/windows-clipboard-2026-10-09.md) |
 | An active event tap can suppress an event | Apple's Core Graphics callback contract | External API proof only |
 | A blocked identity lookup or admission check cannot hold the input stream beyond the capture budget or commit late | Injected stalls in the real filter and both adapter admission paths; no native events posted | Local component proof. Source-app recovery and normal remote insertion still require physical integration checks; this does not prove the cause of an earlier hang |
 | Filtering the source paste prevents the leaked `v` | Physical trials with Flow, superwhisper and Valis | Tested local Mac and Screen Sharing setup |
@@ -177,82 +194,6 @@ release. Ambiguous or physical-key states remain blocked.
 These are local integration results, not universal production compatibility.
 Changes to OS permissions, input routing or another app's protocol require a
 small physical spike before expanding support. See [test-plan.md](test-plan.md).
-
-## Explicit Windows clipboard timing probe
-
-Diagnostic builds expose **Windows Clipboard Test…** for a controlled local
-experiment; release builds do not show this command. It is never called by the
-automatic dictation adapter. The user selects a mode and then focuses an empty
-remote test field. The probe preserves the full original clipboard through the
-bounded isolated reader, publishes an OLD marker before entering Windows App,
-then publishes a unique NEW marker while the remote window remains focused.
-Single trials use the production native sender exactly once. NEW remains
-available for five seconds or 650 ms before an intentional synthetic OLD
-restoration. The six-paste comparison repeats three profiles twice without
-changing focus: 650 ms lifetime, five-second lifetime, and five-second lifetime
-with a one-second pre-paste delay. Each trial publishes a unique numbered marker
-and posts one paste. The original clipboard is preserved once for the series.
-
-The probe reuses the existing input-filter counters. Focus/window/input or
-clipboard changes prevent a delayed paste. New copies prevent original-buffer
-restoration. Normal Quit cancels input, balances keys and allows pending clipboard
-cleanup to finish. There are no additional taps, background polling sessions,
-Screen Sharing menu operations or synchronous provider reads. Logs contain the
-synthetic markers and timings, never the saved original payload. The test records
-`remoteReceipt=unverified`; the visible remote result must be checked separately.
-
-Readiness gate: the risky assumption is that the transient lifetime of dictation
-data, rather than missed clipboard publication, causes stale RDP pastes. The RDP
-delayed-rendering contract is external evidence; controlled lifetime, balanced
-input, cancellation and exact restoration have local component tests. Physical
-single trials passed, but the repeated comparison reproduced stale remote text
-even with a five-second lifetime and one-second pre-paste delay. See the
-[behavior baseline](behavior-baseline.md) for evidence and limits. This probe
-does not establish a fix. The ordinary Windows adapter still never writes the
-clipboard. See the test plan for the trial procedures.
-
-Diagnostic builds also expose **Windows Focus Test…**, explicitly started by the
-user. It alternates DIRECT and REFRESH three times, holding each distinct marker
-for five seconds. REFRESH briefly activates a transparent, owned helper window and
-requests activation of the original Windows App process once. It checks actual
-foreground/key-window state, then validates the original remote window before
-posting any paste. It never invokes private Windows App methods or fabricates
-internal window notifications.
-
-The existing input and clipboard guards remain unchanged across the round trip;
-they are not reset to accept user input. Unexpected focus, a newer copy, input,
-permission/readiness failure, cancellation or a one-second activation polling
-deadline stops the experiment. The window is closed on every exit and activation
-is never retried. This does not make synchronous AppKit calls preemptible or
-prove that Windows App has advertised fresh remote clipboard contents.
-
-The first automatic trial stopped before acquiring helper focus. The diagnostic
-now uses an ordinary window with the existing Settings activation request and
-yields activation to the original target before requesting its return. Phase and
-window-state logs distinguish failure to acquire helper focus from failure to
-return; unchanged polling state is not repeatedly logged. Activation remains an
-OS request, not a guaranteed transition or remote clipboard acknowledgement.
-The window is fully transparent, shadowless and mouse-transparent before its
-first ordering. Its ordinary key-window activation path is retained. The logged
-`windowVisible` means ordered, not visible pixels; `windowAlpha` records opacity.
-
-The readiness gate now includes the successful manual focus control and the
-automatic six-marker comparison in the behavior baseline, plus mocked
-phase/cancellation checks. The separate `RDWindowsFocusRefreshExperiment` build
-flag also requires diagnostic logging and is off by default. Only that local
-experimental build calls the same refresher after a real source's clipboard read
-and modifier readiness, before the existing single native paste.
-
-While the owned helper window holds focus, the captured input/modifier counters,
-generation, trust and clipboard revision stay guarded. The refresher itself only
-permits the original target and its owned key window; third-party focus aborts.
-After return, the original target PID and remote-client window are checked again
-before any keys. Source restoration or new input cancels instead of republishing
-or retrying. Every configured source uses this same opt-in path. The separate
-flag is visible in the diagnostic menu and does not persist in user settings.
-Ordinary builds never change focus during dictation. Real source timing, warnings
-and long-running stability are still integration checks, not established by the
-synthetic marker comparison or component tests.
 
 ## Launch at login
 

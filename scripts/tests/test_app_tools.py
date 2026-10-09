@@ -12,14 +12,6 @@ spec.loader.exec_module(tools)
 
 
 class AppToolsTests(unittest.TestCase):
-    def test_windows_focus_experiment_requires_separate_diagnostic_opt_in(self):
-        for diagnostics in ("0", "1"):
-            self.assertNotIn("RDWindowsFocusRefreshExperiment", tools.bundle_metadata("1.1.1", "111.1.6", diagnostics))
-        self.assertTrue(tools.bundle_metadata("1.1.1", "111.1.6", "1", "0", "1")["RDWindowsFocusRefreshExperiment"])
-        for diagnostics, focus in (("0", "1"), ("1", "yes")):
-            with self.assertRaises(tools.ToolError):
-                tools.bundle_metadata("1.1.1", "111.1.6", diagnostics, "0", focus)
-
     def test_diagnostics_require_explicit_build_opt_in(self):
         self.assertNotIn("RDDiagnosticLogging", tools.bundle_metadata("1.1.0", "110.7.1"))
         self.assertTrue(tools.bundle_metadata("1.1.0", "110.7.1", "1")["RDDiagnosticLogging"])

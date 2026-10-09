@@ -24,8 +24,11 @@ for required in 'License.txt' 'Read Me.txt'; do [[ -s "$mount_dir/$required" ]];
 [[ "$(/usr/bin/xcrun vtool -show-build "$app/Contents/MacOS/Remote Dictate Helper" | /usr/bin/awk '$1 == "minos" {print $2}')" == 26.0 ]]
 python3 - "$app/Contents/MacOS/Remote Dictate Helper" "$mount_dir" <<'PY'
 from pathlib import Path
-import re, sys
+import plistlib, re, sys
 binary = Path(sys.argv[1]).read_bytes()
+metadata = plistlib.loads((Path(sys.argv[1]).parent.parent / "Info.plist").read_bytes())
+if any(metadata.get(key) for key in ("RDDiagnosticLogging", "RDDiagnosticTextLogging")):
+    raise SystemExit("Download packages must not enable private diagnostic logging.")
 if re.search(rb'/(?:Users|home)/[A-Za-z0-9_.-]+', binary):
     raise SystemExit('Executable contains a machine-specific build path; refusing this package.')
 allowed = {'Remote Dictate Helper.app', 'Applications', 'License.txt',

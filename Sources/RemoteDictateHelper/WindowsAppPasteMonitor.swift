@@ -18,7 +18,6 @@ enum WindowsAppPasteError: Error, CustomStringConvertible {
 /// local text data before replay; RDP delivery remains unobservable here.
 @MainActor
 final class WindowsAppPasteMonitor {
-    struct InputStamp: Equatable { let keys: UInt64; let modifiers: UInt64 }
     static let bundleIdentifier = "com.microsoft.rdc.macos"
     typealias WindowValidation = () throws -> Void
     private let sources: [DictationSource]
@@ -29,7 +28,7 @@ final class WindowsAppPasteMonitor {
     private let isTrusted: () -> Bool
     private let captureWindow: @MainActor (pid_t) throws -> WindowValidation
     private let readiness: ExplicitPasteShortcut
-    private let focusRefresh: WindowsFocusRefreshProbe.Action?
+    private let focusRefresh: WindowsFocusRefresh.Action
     private let post: (CGEvent) -> Void
     private let pause: () async throws -> Void
     private let inputSequenceOverride: (() -> UInt64?)?
@@ -47,13 +46,6 @@ final class WindowsAppPasteMonitor {
     private var generation = 0
     private(set) var isBusy = false
 
-    /// Reuse the installed filter's counters for explicit diagnostic input;
-    /// never create another tap or perform application lookup for the probe.
-    var diagnosticInputStamp: InputStamp? {
-        guard filterHealthy, let filter else { return nil }
-        return InputStamp(keys: filter.inputSequence, modifiers: filter.physicalModifierSequence)
-    }
-
     init(sources: [DictationSource], isAvailable: @escaping () -> Bool,
          targetPID: @escaping () -> pid_t? = {
              let app = NSWorkspace.shared.frontmostApplication
@@ -63,7 +55,9 @@ final class WindowsAppPasteMonitor {
          isTrusted: @escaping () -> Bool = { AccessibilityPermission.isTrusted() },
          captureWindow: @escaping @MainActor (pid_t) throws -> WindowValidation = WindowsAppPasteMonitor.windowValidation,
          readiness: ExplicitPasteShortcut? = nil,
-         focusRefresh: WindowsFocusRefreshProbe.Action? = nil,
+         focusRefresh: @escaping WindowsFocusRefresh.Action = { pid, stable, target, log in
+             try await WindowsFocusRefresh.run(targetPID: pid, validateStable: stable, validateTarget: target, log: log)
+         },
          post: @escaping (CGEvent) -> Void = { $0.post(tap: .cghidEventTap) },
          pause: @escaping () async throws -> Void = { try await Task.sleep(for: .milliseconds(25)) },
          inputSequence: (() -> UInt64?)? = nil, modifierSequence: (() -> UInt64)? = nil,
@@ -193,17 +187,15 @@ final class WindowsAppPasteMonitor {
                         throw WindowsAppPasteError.inputChanged
                     }
                 }
-                if let focusRefresh = self.focusRefresh {
-                    trace("stage=experimental-focus-refresh-start")
-                    try await focusRefresh(pid, {
-                        try validateStable(); try validateModifiers()
-                    }, validateContext, trace)
-                    // The exception for our owned window ends before any keys.
-                    // Recheck the original target/window, revision and input.
-                    try validateContext(); try validateModifiers()
-                    try self.readiness.checkReadiness(targetPID: pid)
-                    trace("stage=experimental-focus-refresh-ready remoteReceipt=unverified")
-                }
+                trace("stage=focus-refresh-start")
+                try await self.focusRefresh(pid, {
+                    try validateStable(); try validateModifiers()
+                }, validateContext, trace)
+                // The exception for our owned window ends before any keys.
+                // Recheck the original target/window, revision and input.
+                try validateContext(); try validateModifiers()
+                try self.readiness.checkReadiness(targetPID: pid)
+                trace("stage=focus-refresh-ready remoteReceipt=unverified")
                 try await WindowsAppPasteShortcut.send(validate: {
                     try validateContext(); try validateModifiers()
                 }, post: { event in

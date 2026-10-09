@@ -37,7 +37,7 @@ progress; the app accepts only one transfer at a time.
   it cannot schedule late input. Payload reads run only in an owned child process.
 - Windows App additionally records native paste stages and distinct revision,
   physical modifier, foreground and input-sequence cancellation reasons.
-- The local Windows clipboard-read candidate records `clipboard-read-start` and
+- Windows clipboard preparation records `clipboard-read-start` and
   `clipboard-read-ready`, the captured revision, chosen format, byte count and
   read duration. Failure stops before the native sequence. These records establish
   only local data availability, not that RDP received the current clipboard.
@@ -95,7 +95,7 @@ these logs in an issue or PR: they now contain dictated content.
 Risk: diagnostic I/O or AX work could perturb the timing under investigation.
 Disk writes use a separate serial queue with 512 outstanding records at most;
 overflow never blocks input and is reported as `droppedSinceLast` on the next
-accepted record. AX queries run outside the input tap and main actor. There are
+accepted record. AX queries run outside the input tap and main actor. Diagnostics add
 no extra key events, clipboard writes, focus changes, retries or longer deadlines.
 Polling and metadata preparation still have a small cost; this is not a claim of
 zero measurement overhead. The observer cannot identify the clipboard writer,
@@ -109,63 +109,20 @@ activity separately; dictation, remote receipt and reproduction of intermittent
 failures still require the owner's normal local usage. No public release is
 created by enabling diagnostics.
 
-## Windows clipboard-read experiment
+## Windows paste stages
 
-The current local candidate adds a bounded, read-only preparation step to the
-Windows adapter, independently of the diagnostic flag. This is a protocol change
-under evaluation, not an effect of enabling logging. It does not change the Apple
-Screen Sharing transaction. It neither republishes the clipboard nor inserts
-locally, activates another app, retries a paste or retains/logs text.
-The separate opt-in above can retain a bounded diagnostic copy of already read
-plain text; ordinary builds still discard it.
+Normal builds read the current local text representation through the isolated
+reader, check modifiers, refresh Windows App focus and send one native paste.
+Diagnostics do not enable or change that protocol. `focus-refresh-start`,
+`focus-refresh-owned`, `focus-refresh-returned` and `focus-refresh-ready` identify
+progress; `focus-refresh-failed` includes the failed phase and window state.
+The transparent window has `windowAlpha=0`; `windowVisible` means ordered, not
+visible pixels. The one-second activation deadline is a failure bound, not a wait.
+Clipboard revision and input guards remain active while the helper owns focus.
+A source restoring its clipboard early cancels the operation instead of causing
+a repeat or a clipboard rewrite. `remoteReceipt=unverified` still applies.
 
-Risky assumption: requesting the source's text representation before replay may
-materialize data that Windows App otherwise obtains too late. Apple's
-[pasteboard data-provider contract](https://developer.apple.com/documentation/appkit/nspasteboarditemdataprovider)
-is external evidence for deferred data. A separate-process local spike using only
-a disposable named board verified materialization with an unchanged revision;
-component tests cover refusal, cancellation, timing bounds and unchanged formats.
-None of this proves that a remote Windows clipboard is ready. Physical repeated
-dictation and post-sleep trials are still required; this experiment has not been
-published as a release.
-
-## Opt-in Windows focus refresh for real dictation
-
-`REMOTE_DICTATE_WINDOWS_FOCUS_REFRESH=1` additionally requires
-`REMOTE_DICTATE_DIAGNOSTICS=1`. Both are off in ordinary builds. Logging alone
-does not enable it. The menu shows **Windows focus refresh experiment enabled**;
-the setting belongs to the local bundle, not saved user preferences.
-
-This experiment adds one guarded helper-window/Windows App focus round trip
-after the source's local clipboard data and physical modifiers are ready, before
-the existing native paste. The helper window is transparent and shadowless;
-`windowAlpha=0` records that mode, while `windowVisible` only means ordered.
-It never writes or restores the Windows-path clipboard;
-the dictation source and RDP keep those responsibilities. Changed clipboard,
-input, modifiers, trust or target stop the operation; there is no retry.
-`experimental-focus-refresh-start`, phase/window-state logs and
-`experimental-focus-refresh-ready` describe the attempt. `remoteReceipt=unverified`
-still applies. The one-second activation deadline is a failure bound, not a wait.
-
-Readiness evidence: the controlled six-marker test delivered current values for
-all three REFRESH trials (42–52 ms round trips), while the intervening DIRECT
-trials repeated previous values. This does not yet prove compatibility with a
-real source's transient clipboard lifetime or focus detection. Check three actual
-dictations without an intervening focus change, copy or manual paste. Verify
-fresh remote text, source restoration of the original local buffer, source
-warnings and responsiveness. Then check the other configured dictation sources.
-No public release should enable this flag based only on synthetic tests.
-
-## Local provider-isolation candidate
-
-The next candidate isolates payload reads for both clients. Baseline and returned
-clipboard reads are asynchronous with a 250 ms failure deadline; candidate capture
-uses up to 60 ms within the existing 80 ms decision deadline. These are upper
-bounds, not fixed waits. Exact prepared snapshots and revision guards replace
-synchronous provider calls during replay and restoration. See the
-[architecture](architecture.md#clipboard-provider-isolation) for proof and limits.
-
-A physical Windows trial of the preceding materialization-only candidate still
-inserted old remote text despite a fast successful local read. That experiment
-does not establish a fix for stale RDP clipboard data. Isolation addresses helper
-responsiveness first; no remote acknowledgement or automatic paste retry is added.
+The [experiment archive](experiments/windows-clipboard-2026-10-09.md) preserves
+the retired diagnostic commands, build flags, trial procedures and outcomes.
+They are not available in current builds. For provider isolation and evidence
+limits see [architecture](architecture.md#clipboard-provider-isolation).

@@ -213,7 +213,7 @@ clipboard. See the test plan for the trial procedures.
 
 Diagnostic builds also expose **Windows Focus Test…**, explicitly started by the
 user. It alternates DIRECT and REFRESH three times, holding each distinct marker
-for five seconds. REFRESH briefly activates a visible, owned helper panel and
+for five seconds. REFRESH briefly activates a visible, owned helper window and
 requests activation of the original Windows App process once. It checks actual
 foreground/key-window state, then validates the original remote window before
 posting any paste. It never invokes private Windows App methods or fabricates
@@ -222,9 +222,16 @@ internal window notifications.
 The existing input and clipboard guards remain unchanged across the round trip;
 they are not reset to accept user input. Unexpected focus, a newer copy, input,
 permission/readiness failure, cancellation or a one-second activation polling
-deadline stops the experiment. The panel is closed on every exit and activation
+deadline stops the experiment. The window is closed on every exit and activation
 is never retried. This does not make synchronous AppKit calls preemptible or
 prove that Windows App has advertised fresh remote clipboard contents.
+
+The first automatic trial stopped before acquiring helper focus. The diagnostic
+now uses an ordinary window with the existing Settings activation request and
+yields activation to the original target before requesting its return. Phase and
+window-state logs distinguish failure to acquire helper focus from failure to
+return; unchanged polling state is not repeatedly logged. Activation remains an
+OS request, not a guaranteed transition or remote clipboard acknowledgement.
 
 The readiness gate is the successful manual focus control in the behavior
 baseline plus mocked phase/cancellation checks. Automatic activation with the

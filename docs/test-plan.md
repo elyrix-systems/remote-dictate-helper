@@ -189,8 +189,11 @@ exact restoration and cancellation between trials without a later replay.
 Requires the local Mac, Windows App, Accessibility and an empty remote test
 field. In a diagnostic build choose **Windows Focus Test… → Start focus test**,
 then click that field within 20 seconds. Do not type, dictate, copy or switch
-windows for 45 seconds. The explicit test briefly shows its own helper panel
-three times; this is expected. No messages should be sent from the field.
+windows for 45 seconds. If all steps run, the explicit test briefly shows its
+own ordinary helper window three times; no messages should be sent from the field.
+If no window appears or the test stops early, inspect the failure phase and
+foreground, key-window, visibility and active-Space metadata. An activation
+timeout is not a completed clipboard comparison; do not count unrun trials.
 
 Six numbered markers alternate DIRECT and REFRESH, with identical five-second
 publication lifetimes. Record each visible marker. In the previously failing
@@ -202,7 +205,9 @@ solely by local input or focus logs. Check original local restoration separately
 Automatic tests mock all activation APIs and use only named pasteboards. They
 cover activation refusal/timeout, cancellation, unexpected third-party focus,
 another helper window, original target-window validation, changed input/revision,
-one activation request, panel cleanup and no later paste after failure. Source
+one activation request, window cleanup and no later paste after failure. A
+construction check verifies key eligibility without displaying a window;
+it does not prove that macOS will grant an activation request. Source
 dictation timing/warnings and long-running native client stability remain separate
 integration checks before enabling any automatic focus workaround.
 

@@ -2,6 +2,14 @@ import AppKit
 
 @MainActor
 func testWindowsFocusRefreshProbe() async {
+    _ = NSApplication.shared
+    let window = WindowsFocusRefreshProbe.makeWindow()
+    expectFalse(window is NSPanel)
+    expectTrue(window.canBecomeKey, "Diagnostic window must accept key status")
+    expectFalse(window.hidesOnDeactivate)
+    expectFalse(window.isVisible, "Construction must not activate or show the diagnostic window")
+    window.close()
+
     @MainActor final class Fixture {
         var front: pid_t? = 42
         var key = false
@@ -13,6 +21,7 @@ func testWindowsFocusRefreshProbe() async {
         var shown = 0, returned = 0, closed = 0, ticks = 0
         var onPause: ((Int) -> Void)?
         var succeeded = false
+        var failure = ""
         var logs: [String] = []
         func run() async {
             let environment = WindowsFocusRefreshProbe.Environment(helperPID: 9,
@@ -36,7 +45,7 @@ func testWindowsFocusRefreshProbe() async {
                         if self.front != 42 || !self.windowValid { throw WindowsClipboardProbe.Failure.changed }
                     }, log: { self.logs.append($0) })
                 succeeded = true
-            } catch { succeeded = false }
+            } catch { succeeded = false; failure = String(describing: error) }
         }
     }
 
@@ -83,11 +92,18 @@ func testWindowsFocusRefreshProbe() async {
         expectFalse(timeout.succeeded)
         expectEqual(timeout.closed, 1)
         expectTrue(timeout.time >= 1 && timeout.time < 1.1)
+        let phase = lateReturn ? "returningToTarget" : "acquiringHelper"
+        expectTrue(timeout.failure.contains(phase), "Timeout identifies the failed phase")
+        expectTrue(timeout.logs.last?.contains("stage=focus-probe-failed phase=\(phase)") == true)
+        expectTrue(timeout.logs.last?.contains("frontPID=") == true)
+        expectTrue(timeout.logs.last?.contains("ownsKeyWindow=") == true)
+        expectTrue(timeout.logs.count < 8, "Unchanged readiness state does not spam the log")
     }
 
     let refused = Fixture(); refused.activationAllowed = false
     await refused.run()
     expectFalse(refused.succeeded); expectEqual(refused.returned, 1); expectEqual(refused.closed, 1)
+    expectTrue(refused.logs.last?.contains("phase=returningToTarget") == true)
 
     let cancelled = Fixture()
     var task: Task<Void, Never>?

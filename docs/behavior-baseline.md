@@ -345,3 +345,25 @@ during an actual dictation. The bounded native log collector had ended before
 this later test; its empty output is not evidence of absent client reads. Source
 warnings, transient source restoration and the previously sampled native
 clipboard waits must be considered before applying a focus change automatically.
+
+## Automatic focus diagnostic stopped before activation: 111.1.4
+
+The next explicitly started focus comparison inserted its first DIRECT marker
+into the same remote Codex field. The second REFRESH trial published a new local
+revision, but the helper never became foreground. The one-second activation
+deadline stopped the test before its second paste. No remaining trials ran, and
+the original local clipboard was restored. The owner reported no brief helper
+window appearances; the screen contained only the first DIRECT marker.
+
+This identifies a failure of the diagnostic's activation step, not a failed
+clipboard refresh after a successful focus round trip. The original log cannot
+distinguish key-window eligibility from a refused activation request. The native
+clipboard collector had already ended before the trial and provides no evidence
+about reads during this attempt.
+
+The follow-up diagnostic uses an ordinary Settings-style window and activation
+request, with cooperative activation when returning to the original target. It
+records foreground/key-window state and which phase times out. The one-second
+failure deadline, no-retry guards and production dictation path are unchanged.
+Mocked tests establish cancellation and failure reporting; real automatic focus
+and clipboard delivery still require local integration proof.

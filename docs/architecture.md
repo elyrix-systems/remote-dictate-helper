@@ -233,11 +233,23 @@ window-state logs distinguish failure to acquire helper focus from failure to
 return; unchanged polling state is not repeatedly logged. Activation remains an
 OS request, not a guaranteed transition or remote clipboard acknowledgement.
 
-The readiness gate is the successful manual focus control in the behavior
-baseline plus mocked phase/cancellation checks. Automatic activation with the
-real client is still an integration experiment. Normal Windows dictation never
-calls this module and remains unchanged. No source-app warning, restoration or
-long-running stability claim follows from these component tests.
+The readiness gate now includes the successful manual focus control and the
+automatic six-marker comparison in the behavior baseline, plus mocked
+phase/cancellation checks. The separate `RDWindowsFocusRefreshExperiment` build
+flag also requires diagnostic logging and is off by default. Only that local
+experimental build calls the same refresher after a real source's clipboard read
+and modifier readiness, before the existing single native paste.
+
+While the owned helper window holds focus, the captured input/modifier counters,
+generation, trust and clipboard revision stay guarded. The refresher itself only
+permits the original target and its owned key window; third-party focus aborts.
+After return, the original target PID and remote-client window are checked again
+before any keys. Source restoration or new input cancels instead of republishing
+or retrying. Every configured source uses this same opt-in path. The separate
+flag is visible in the diagnostic menu and does not persist in user settings.
+Ordinary builds never change focus during dictation. Real source timing, warnings
+and long-running stability are still integration checks, not established by the
+synthetic marker comparison or component tests.
 
 ## Launch at login
 

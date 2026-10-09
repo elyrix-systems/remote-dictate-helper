@@ -24,6 +24,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     private var quitAfterClipboardRestore = false
     private let diagnosticContext = DiagnosticContextObserver()
     private var windowsProbe: WindowsClipboardProbe?
+    private let windowsFocusExperiment = WindowsFocusRefreshProbe.dictationExperimentEnabled(info: Bundle.main.infoDictionary ?? [:])
     private lazy var launchAtLogin = LaunchAtLogin(report: { [weak self] in self?.appendLog("login item \($0)") })
     private var busy: Bool {
         runningTask != nil || sharedClipboardLease != nil || clipboardRestoration.hasPendingRestore || clipboardSession != nil
@@ -66,6 +67,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         configureMonitor()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
         appendLog("app launched version=\(version)")
+        if windowsFocusExperiment { appendLog("experimental Windows focus refresh enabled for dictation") }
         let loginNeedsAttention = launchAtLogin.registerOnFirstLaunch()
         if loginNeedsAttention || SettingsReadiness.shouldOpenOnLaunch(completed: UserDefaults.standard.bool(forKey: SettingsWindowController.completionKey),
                                                accessibility: AccessibilityPermission.isTrusted()) {
@@ -100,6 +102,10 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
             let diagnostics = NSMenuItem(title: DiagnosticLog.shared.textEnabled
                 ? "Diagnostic text logging enabled" : "Diagnostic logging enabled", action: nil, keyEquivalent: "")
             diagnostics.isEnabled = false; menu.addItem(diagnostics)
+            if windowsFocusExperiment {
+                let experiment = NSMenuItem(title: "Windows focus refresh experiment enabled", action: nil, keyEquivalent: "")
+                experiment.isEnabled = false; menu.addItem(experiment)
+            }
             let probe = NSMenuItem(title: "Windows Clipboard Test…", action: #selector(openWindowsClipboardTest), keyEquivalent: "")
             probe.target = self; menu.addItem(probe)
             let focusProbe = NSMenuItem(title: "Windows Focus Test…", action: #selector(openWindowsFocusTest), keyEquivalent: "")
@@ -189,8 +195,15 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         }, report: { [weak self] in self?.appendLog("capture \($0)") })
         do { try next.start(); monitor = next }
         catch { lastError = String(describing: error); setStatus("Error: \(error)"); appendLog("monitor start error=\(error)") }
+        let focusRefresh: WindowsFocusRefreshProbe.Action?
+        if windowsFocusExperiment {
+            focusRefresh = { pid, stable, target, log in
+                try await WindowsFocusRefreshProbe.run(targetPID: pid, validateStable: stable, validateTarget: target, log: log)
+            }
+        } else { focusRefresh = nil }
         let windows = WindowsAppPasteMonitor(sources: settings.sources,
             isAvailable: { [weak self] in self?.canAcceptPaste ?? false },
+            focusRefresh: focusRefresh,
             onCaptured: { [weak self] in
                 self?.lastError = nil; self?.setStatus("Captured: preparing Windows App paste")
             }, onCompleted: { [weak self] result in

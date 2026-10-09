@@ -29,6 +29,7 @@ final class WindowsAppPasteMonitor {
     private let isTrusted: () -> Bool
     private let captureWindow: @MainActor (pid_t) throws -> WindowValidation
     private let readiness: ExplicitPasteShortcut
+    private let focusRefresh: WindowsFocusRefreshProbe.Action?
     private let post: (CGEvent) -> Void
     private let pause: () async throws -> Void
     private let inputSequenceOverride: (() -> UInt64?)?
@@ -62,6 +63,7 @@ final class WindowsAppPasteMonitor {
          isTrusted: @escaping () -> Bool = { AccessibilityPermission.isTrusted() },
          captureWindow: @escaping @MainActor (pid_t) throws -> WindowValidation = WindowsAppPasteMonitor.windowValidation,
          readiness: ExplicitPasteShortcut? = nil,
+         focusRefresh: WindowsFocusRefreshProbe.Action? = nil,
          post: @escaping (CGEvent) -> Void = { $0.post(tap: .cghidEventTap) },
          pause: @escaping () async throws -> Void = { try await Task.sleep(for: .milliseconds(25)) },
          inputSequence: (() -> UInt64?)? = nil, modifierSequence: (() -> UInt64)? = nil,
@@ -77,6 +79,7 @@ final class WindowsAppPasteMonitor {
         }
         self.readiness = readiness ?? ExplicitPasteShortcut(isolatedSoftwareCommand: true, interceptedPaste: true,
             targetIsFrontmost: { targetPID() == $0 })
+        self.focusRefresh = focusRefresh
         self.post = post; self.pause = pause; self.onCaptured = onCaptured
         self.onCompleted = onCompleted; self.report = report
         self.diagnostic = diagnostic
@@ -144,18 +147,12 @@ final class WindowsAppPasteMonitor {
             do {
                 try Task.checkCancellation()
                 let validateWindow = try self.captureWindow(pid)
-                let validateContext = {
+                let validateStable: @MainActor () throws -> Void = {
                     try Task.checkCancellation()
                     guard self.generation == currentGeneration, self.filterHealthy, self.isTrusted() else {
                         trace("cancel reason=unavailable generation=\(self.generation) expectedGeneration=\(currentGeneration) filterHealthy=\(self.filterHealthy)")
                         throw WindowsAppPasteError.unavailable
                     }
-                    let actual = self.targetPID()
-                    guard actual == pid else {
-                        trace("cancel reason=foreground_target_changed observedPID=\(actual.map(String.init) ?? "none")")
-                        throw WindowsAppPasteError.targetChanged
-                    }
-                    try validateWindow()
                     let sequence = self.currentInputSequence
                     guard sequence == event.sequence else {
                         trace("cancel reason=input_sequence_changed expected=\(event.sequence.map(String.init) ?? "none") actual=\(sequence.map(String.init) ?? "none") lastInput={\(self.filter?.lastInputMetadata ?? "unavailable")}")
@@ -166,6 +163,15 @@ final class WindowsAppPasteMonitor {
                         trace("cancel reason=clipboard_changed expected=\(capturedRevision) actual=\(actualRevision)")
                         throw WindowsAppPasteError.clipboardChanged
                     }
+                }
+                let validateContext: @MainActor () throws -> Void = {
+                    try validateStable()
+                    let actual = self.targetPID()
+                    guard actual == pid else {
+                        trace("cancel reason=foreground_target_changed observedPID=\(actual.map(String.init) ?? "none")")
+                        throw WindowsAppPasteError.targetChanged
+                    }
+                    try validateWindow()
                 }
                 try validateContext()
                 trace("stage=clipboard-read-start revision=\(capturedRevision) deadlineMs=250")
@@ -181,12 +187,25 @@ final class WindowsAppPasteMonitor {
                     onWaiting: { self.report("Windows App waiting: \($0)"); trace("stage=wait-modifiers \($0)") })
                 let modifiers = self.currentModifierSequence
                 try self.readiness.checkReadiness(targetPID: pid)
-                try await WindowsAppPasteShortcut.send(validate: {
-                    try validateContext()
+                let validateModifiers: @MainActor () throws -> Void = {
                     guard self.currentModifierSequence == modifiers else {
                         trace("cancel reason=physical_modifiers_changed expected=\(modifiers) actual=\(self.currentModifierSequence)")
                         throw WindowsAppPasteError.inputChanged
                     }
+                }
+                if let focusRefresh = self.focusRefresh {
+                    trace("stage=experimental-focus-refresh-start")
+                    try await focusRefresh(pid, {
+                        try validateStable(); try validateModifiers()
+                    }, validateContext, trace)
+                    // The exception for our owned window ends before any keys.
+                    // Recheck the original target/window, revision and input.
+                    try validateContext(); try validateModifiers()
+                    try self.readiness.checkReadiness(targetPID: pid)
+                    trace("stage=experimental-focus-refresh-ready remoteReceipt=unverified")
+                }
+                try await WindowsAppPasteShortcut.send(validate: {
+                    try validateContext(); try validateModifiers()
                 }, post: { event in
                     self.post(event)
                     trace("stage=native-paste type=\(event.type.rawValue) key=\(event.getIntegerValueField(.keyboardEventKeycode)) flags=0x\(String(event.flags.rawValue, radix: 16))")

@@ -121,7 +121,7 @@ def prepare_identity():
     print("Local signing setup complete. The private key stays in your keychain.")
 
 
-def bundle_metadata(version, build_number, diagnostics="0", diagnostic_text="0"):
+def bundle_metadata(version, build_number, diagnostics="0", diagnostic_text="0", windows_focus_refresh="0"):
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ToolError("Version must be MAJOR.MINOR.PATCH.")
     if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)*", build_number):
@@ -130,6 +130,8 @@ def bundle_metadata(version, build_number, diagnostics="0", diagnostic_text="0")
         raise ToolError("Diagnostics must be explicitly 0 or 1.")
     if diagnostic_text not in {"0", "1"} or (diagnostic_text == "1" and diagnostics != "1"):
         raise ToolError("Diagnostic text must be explicitly 0 or 1 and requires diagnostics.")
+    if windows_focus_refresh not in {"0", "1"} or (windows_focus_refresh == "1" and diagnostics != "1"):
+        raise ToolError("The Windows focus experiment must be explicitly 0 or 1 and requires diagnostics.")
     metadata = {
         "CFBundleIdentifier": BUNDLE_ID, "CFBundleName": PRODUCT,
         "CFBundleDisplayName": PRODUCT, "CFBundleExecutable": PRODUCT,
@@ -142,6 +144,8 @@ def bundle_metadata(version, build_number, diagnostics="0", diagnostic_text="0")
         metadata["RDDiagnosticLogging"] = True
     if diagnostic_text == "1":
         metadata["RDDiagnosticTextLogging"] = True
+    if windows_focus_refresh == "1":
+        metadata["RDWindowsFocusRefreshExperiment"] = True
     return metadata
 
 
@@ -154,7 +158,8 @@ def build(output=None):
         except ToolError:
             number = "1"
     metadata = bundle_metadata(version, number, os.environ.get("REMOTE_DICTATE_DIAGNOSTICS", "0"),
-                              os.environ.get("REMOTE_DICTATE_DIAGNOSTIC_TEXT", "0"))
+                              os.environ.get("REMOTE_DICTATE_DIAGNOSTIC_TEXT", "0"),
+                              os.environ.get("REMOTE_DICTATE_WINDOWS_FOCUS_REFRESH", "0"))
     configuration = os.environ.get("REMOTE_DICTATE_CONFIGURATION", "release")
     if configuration not in {"debug", "release"}:
         raise ToolError("Build configuration must be debug or release.")

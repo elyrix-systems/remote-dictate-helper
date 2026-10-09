@@ -367,3 +367,24 @@ records foreground/key-window state and which phase times out. The one-second
 failure deadline, no-retry guards and production dictation path are unchanged.
 Mocked tests establish cancellation and failure reporting; real automatic focus
 and clipboard delivery still require local integration proof.
+
+## Automatic focus comparison succeeded: 111.1.5
+
+The following comparison completed all six trials in the same remote Codex
+field. The visible marker numbers were **1, 2, 2, 4, 4, 6**. Each REFRESH trial
+(2, 4, 6) delivered its own current marker. The intervening DIRECT trials (3, 5)
+repeated the preceding marker. The original local clipboard was restored.
+
+The three observed helper-key-window/target round trips took 52, 46 and 42 ms.
+The owner did not notice the brief window appearances; foreground and key-window
+logs nevertheless recorded all three transitions. The native log collector
+covered this test and recorded Windows App requesting text for trials 1, 2, 4
+and 6, consistent with the visible result. That metadata alone is not a remote
+receipt; the displayed markers establish the result.
+
+This is local integration proof for automatic focus refresh in the controlled
+five-second synthetic publication test. It does not establish real dictation
+timing, absence of source-app warnings or prolonged stability. The next local
+experiment applies the same guarded refresh before a real captured Windows paste,
+behind a separate diagnostic build opt-in. It leaves clipboard publication and
+restoration with the source and RDP. Ordinary builds retain their existing path.

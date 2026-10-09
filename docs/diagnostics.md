@@ -129,6 +129,31 @@ None of this proves that a remote Windows clipboard is ready. Physical repeated
 dictation and post-sleep trials are still required; this experiment has not been
 published as a release.
 
+## Opt-in Windows focus refresh for real dictation
+
+`REMOTE_DICTATE_WINDOWS_FOCUS_REFRESH=1` additionally requires
+`REMOTE_DICTATE_DIAGNOSTICS=1`. Both are off in ordinary builds. Logging alone
+does not enable it. The menu shows **Windows focus refresh experiment enabled**;
+the setting belongs to the local bundle, not saved user preferences.
+
+This experiment adds one guarded helper-window/Windows App focus round trip
+after the source's local clipboard data and physical modifiers are ready, before
+the existing native paste. It never writes or restores the Windows-path clipboard;
+the dictation source and RDP keep those responsibilities. Changed clipboard,
+input, modifiers, trust or target stop the operation; there is no retry.
+`experimental-focus-refresh-start`, phase/window-state logs and
+`experimental-focus-refresh-ready` describe the attempt. `remoteReceipt=unverified`
+still applies. The one-second activation deadline is a failure bound, not a wait.
+
+Readiness evidence: the controlled six-marker test delivered current values for
+all three REFRESH trials (42–52 ms round trips), while the intervening DIRECT
+trials repeated previous values. This does not yet prove compatibility with a
+real source's transient clipboard lifetime or focus detection. Check three actual
+dictations without an intervening focus change, copy or manual paste. Verify
+fresh remote text, source restoration of the original local buffer, source
+warnings and responsiveness. Then check the other configured dictation sources.
+No public release should enable this flag based only on synthetic tests.
+
 ## Local provider-isolation candidate
 
 The next candidate isolates payload reads for both clients. Baseline and returned

@@ -4,6 +4,13 @@ import AppKit
 /// Windows App notification or an acknowledgement of remote clipboard delivery.
 @MainActor
 enum WindowsFocusRefreshProbe {
+    typealias Action = @MainActor (pid_t, @MainActor () throws -> Void,
+        @MainActor () throws -> Void, @MainActor (String) -> Void) async throws -> Void
+
+    static func dictationExperimentEnabled(info: [String: Any]) -> Bool {
+        info["RDDiagnosticLogging"] as? Bool == true && info["RDWindowsFocusRefreshExperiment"] as? Bool == true
+    }
+
     enum Phase: String { case acquiringHelper, returningToTarget }
     enum Failure: Error { case timeout(Phase), unexpectedFocus, activationRefused }
 
@@ -23,8 +30,8 @@ enum WindowsFocusRefreshProbe {
                         validateStable: @MainActor () throws -> Void,
                         validateTarget: @MainActor () throws -> Void,
                         log: @MainActor (String) -> Void) async throws {
-        // A failure deadline, not a fixed wait. The ordinary dictation adapter
-        // never calls this experiment. No retries or input occur here.
+        // A failure deadline, not a fixed wait. Ordinary builds never call this
+        // from dictation. No retries, input or clipboard access occur here.
         let started = e.now(), deadline = started + 1
         var phase = Phase.acquiringHelper
         defer { e.close() }

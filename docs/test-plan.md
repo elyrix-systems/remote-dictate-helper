@@ -189,8 +189,9 @@ exact restoration and cancellation between trials without a later replay.
 Requires the local Mac, Windows App, Accessibility and an empty remote test
 field. In a diagnostic build choose **Windows Focus Test… → Start focus test**,
 then click that field within 20 seconds. Do not type, dictate, copy or switch
-windows for 45 seconds. If all steps run, the explicit test briefly shows its
-own ordinary helper window three times; no messages should be sent from the field.
+windows for 45 seconds. If all steps run, the explicit test briefly activates its
+own ordinary helper window three times; a 42–52 ms round trip may not be visually
+noticeable. No messages should be sent from the field.
 If no window appears or the test stops early, inspect the failure phase and
 foreground, key-window, visibility and active-Space metadata. An activation
 timeout is not a completed clipboard comparison; do not count unrun trials.
@@ -210,6 +211,32 @@ construction check verifies key eligibility without displaying a window;
 it does not prove that macOS will grant an activation request. Source
 dictation timing/warnings and long-running native client stability remain separate
 integration checks before enabling any automatic focus workaround.
+
+## Real dictation with experimental Windows focus refresh
+
+Requires a local bundle explicitly built with diagnostics and
+`REMOTE_DICTATE_WINDOWS_FOCUS_REFRESH=1`, a local source app, Accessibility,
+Windows App and an empty remote field. This flag is absent from normal builds.
+
+1. Confirm the menu's **Windows focus refresh experiment enabled** label. Keep
+   Windows App in its current session; do not restart it to erase the stale state.
+2. Copy a distinct original marker locally, then focus the empty remote field.
+3. Make three distinct numbered dictations into that field without an intervening
+   local focus switch, copy or manual paste. Do not send the resulting text.
+4. Check that all three current phrases arrived exactly once, no `v` appeared,
+   and neither the source nor remote input hung. Record any source warning.
+5. Paste into an empty local field after all three operations and confirm that
+   the source preserved the original local marker. Record the actual result;
+   helper completion alone cannot establish remote receipt or source restoration.
+6. Correlate each operation's captured revision, focus phases and one native paste
+   with native text-read metadata. A source revision change during refresh must
+   stop the operation before V, with no repeat or clipboard rewrite.
+
+Then repeat relevant hold/toggle modes for the other configured sources and
+observe normal extended use/sleep. Component tests mock focus for all default and
+custom source identities, repeated revisions, changed input/modifiers/revision,
+window/target/trust changes, timeout, disabled filter and Quit. These do not prove
+native client stability or compatibility with every source's clipboard lifetime.
 
 ## Validated baseline
 

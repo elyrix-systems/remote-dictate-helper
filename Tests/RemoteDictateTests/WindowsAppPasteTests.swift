@@ -14,6 +14,8 @@ final class WindowsAppPasteTests {
         var heldFn = false
         var onReadHardware: (() -> Void)?
         var onPrepare: (() async throws -> Void)?
+        var focusRefreshCalls = 0
+        var onFocusRefresh: WindowsFocusRefreshProbe.Action?
         var preparedRevisions: [Int] = []
         var events: [CGEvent] = []
         var results: [Result<Void, Error>] = []
@@ -22,12 +24,23 @@ final class WindowsAppPasteTests {
         var onPause: ((Int) throws -> Void)?
         var monitor: WindowsAppPasteMonitor!
 
-        init(sources: [DictationSource] = AppSettings().sources, textLog: DiagnosticLog = .shared) {
+        init(sources: [DictationSource] = AppSettings().sources, textLog: DiagnosticLog = .shared, refreshFocus: Bool = false) {
             let ready = ExplicitPasteShortcut(isolatedSoftwareCommand: true, interceptedPaste: true,
                 isTrusted: { [unowned self] in trusted }, targetIsFrontmost: { [unowned self] in target == $0 },
                 flags: { .maskCommand }, hardwareFlags: { [unowned self] in
                     onReadHardware?(); return heldFn ? .maskSecondaryFn : []
                 }, post: { _ in fail("Readiness must not post input") })
+            let refresh: WindowsFocusRefreshProbe.Action?
+            if refreshFocus {
+                refresh = { [unowned self] pid, stable, target, log in
+                    focusRefreshCalls += 1
+                    expectEqual(preparedRevisions.count, focusRefreshCalls, "Prepare new data before focus refresh")
+                    expectTrue(events.isEmpty || events.last?.flags.contains(.maskCommand) == false,
+                               "No held native keys while changing focus")
+                    if let onFocusRefresh { try await onFocusRefresh(pid, stable, target, log) }
+                    else { try stable(); try target() }
+                }
+            } else { refresh = nil }
             monitor = WindowsAppPasteMonitor(sources: sources,
                 isAvailable: { [unowned self] in available }, targetPID: { [unowned self] in target },
                 revision: { [unowned self] in revision }, prepareClipboard: { [unowned self] captured in
@@ -42,7 +55,7 @@ final class WindowsAppPasteTests {
                     return { [unowned self] in
                         guard windowValid else { throw WindowsAppPasteError.targetChanged }
                     }
-                }, readiness: ready,
+                }, readiness: ready, focusRefresh: refresh,
                 post: { [unowned self] in events.append($0) }, pause: { [unowned self] in
                     pauses += 1; try onPause?(pauses); await Task.yield()
                 }, inputSequence: { [unowned self] in sequence }, modifierSequence: { [unowned self] in modifiers },
@@ -67,6 +80,70 @@ final class WindowsAppPasteTests {
             expectEqual(events.last!.flags.rawValue & 0x18, 0)
             expectFalse(keys.contains(51), "Never delete a remote character")
         }
+    }
+
+    func testExperimentalFocusRefreshGuards() async throws {
+        // Default builds retain the existing path, even when a hook is provided
+        // to the fixture to detect an accidental focus operation.
+        let normal = Fixture()
+        normal.onFocusRefresh = { _, _, _, _ in fail("Default adapter must not change focus") }
+        expectTrue(normal.monitor.observe(normal.input())); try await normal.wait()
+        expectEqual(normal.focusRefreshCalls, 0); expectEqual(normal.keys, [55,9,9,55])
+
+        for source in SourceInputHarness.sources {
+            let repeated = Fixture(sources: [source], refreshFocus: true)
+            repeated.onFocusRefresh = { pid, stable, target, _ in
+                repeated.target = nil // Owned helper window in the real refresher.
+                try stable() // Clipboard/input/trust remain guarded while away.
+                await Task.yield()
+                repeated.target = pid
+                try target()
+            }
+            let input = SourceInputHarness(sources: [source], identifier: source.bundleIdentifier) {
+                if let sequence = $0.sequence { repeated.sequence = sequence }
+                return repeated.monitor.observe($0, decision: $1)
+            }
+            for _ in 0..<3 {
+                let down = try await input.paste(down: true)
+                let up = try await input.paste(down: false)
+                expectTrue(down); expectTrue(up)
+                try await repeated.wait(); repeated.revision += 1
+            }
+            expectEqual(repeated.focusRefreshCalls, 3)
+            expectEqual(repeated.keys, Array(repeating: [Int64(55),9,9,55], count: 3).flatMap { $0 })
+            expectEqual(repeated.revision, 4, "Focus workaround must never write clipboard")
+            for result in repeated.results { try result.get() }
+        }
+        for reason in ["clipboard", "input", "modifier", "window", "target", "trust", "quit", "disabled", "timeout", "late-clipboard"] {
+            let f = Fixture(refreshFocus: true)
+            f.onFocusRefresh = { _, stable, target, _ in
+                expectTrue(f.events.isEmpty)
+                switch reason {
+                case "clipboard", "late-clipboard": f.revision += 1
+                case "input": f.sequence += 1
+                case "modifier": f.modifiers += 1
+                case "window": f.windowValid = false
+                case "target": f.target = nil
+                case "trust": f.trusted = false
+                case "quit": f.monitor.stop()
+                case "disabled": f.monitor.filterDisabled()
+                default: throw WindowsFocusRefreshProbe.Failure.timeout(.acquiringHelper)
+                }
+                // Even a refresher returning without a final check cannot allow
+                // a stale revision into the native sender.
+                if reason != "late-clipboard" { try stable(); try target() }
+            }
+            expectTrue(f.monitor.observe(f.input())); try await f.wait()
+            for _ in 0..<10 { await Task.yield() }
+            expectTrue(f.events.isEmpty, "No paste after focus failure: \(reason)")
+            expectEqual(f.focusRefreshCalls, 1, "Never retry a focus refresh")
+            if reason == "quit" { expectTrue(f.results.isEmpty) }
+            else { expectEqual(f.results.count, 1); expectThrows(try f.results[0].get()) }
+            f.target = 101; f.windowValid = true; f.trusted = true
+            await Task.yield()
+            expectTrue(f.events.isEmpty, "Returning cannot replay after focus failure")
+        }
+        print("Experimental Windows focus refresh: explicit opt-in, all selected sources, same revision/context guards, no keys after failure; mocked activation/input only")
     }
 
     func testDiagnosticReasons() async throws {

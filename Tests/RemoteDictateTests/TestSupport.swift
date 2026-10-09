@@ -73,6 +73,7 @@ struct TestRunner {
         try await windows.testDiagnosticReasons()
         try await windows.testDiagnosticTextStages()
         try await windows.testClipboardPreparationGuards()
+        try await windows.testExperimentalFocusRefreshGuards()
         try await testWindowsClipboardReader()
         await testWindowsFocusRefreshProbe()
         try await testWindowsClipboardProbe()

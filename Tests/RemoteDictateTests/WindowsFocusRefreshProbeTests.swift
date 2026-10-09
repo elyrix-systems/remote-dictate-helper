@@ -2,6 +2,11 @@ import AppKit
 
 @MainActor
 func testWindowsFocusRefreshProbe() async {
+    for info: [String: Any] in [[:], ["RDDiagnosticLogging": true], ["RDWindowsFocusRefreshExperiment": true],
+                               ["RDDiagnosticLogging": true, "RDWindowsFocusRefreshExperiment": false]] {
+        expectFalse(WindowsFocusRefreshProbe.dictationExperimentEnabled(info: info))
+    }
+    expectTrue(WindowsFocusRefreshProbe.dictationExperimentEnabled(info: ["RDDiagnosticLogging": true, "RDWindowsFocusRefreshExperiment": true]))
     _ = NSApplication.shared
     let window = WindowsFocusRefreshProbe.makeWindow()
     expectFalse(window is NSPanel)

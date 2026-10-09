@@ -38,8 +38,7 @@ final class WindowsClipboardProbe {
     private let input: () -> WindowsAppPasteMonitor.InputStamp?
     private let captureWindow: @MainActor (pid_t) throws -> (() throws -> Void)
     private let ready: (pid_t) throws -> Void
-    typealias RefreshFocus = @MainActor (pid_t, @MainActor () throws -> Void,
-        @MainActor () throws -> Void, @MainActor (String) -> Void) async throws -> Void
+    typealias RefreshFocus = WindowsFocusRefreshProbe.Action
     private let refreshFocus: RefreshFocus
     private let post: (CGEvent) -> Void
     private let now: () -> TimeInterval

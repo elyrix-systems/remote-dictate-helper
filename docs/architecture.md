@@ -186,8 +186,12 @@ automatic dictation adapter. The user selects a mode and then focuses an empty
 remote test field. The probe preserves the full original clipboard through the
 bounded isolated reader, publishes an OLD marker before entering Windows App,
 then publishes a unique NEW marker while the remote window remains focused.
-It uses the production native sender exactly once. NEW remains available for
-five seconds or 650 ms before an intentional synthetic OLD restoration.
+Single trials use the production native sender exactly once. NEW remains
+available for five seconds or 650 ms before an intentional synthetic OLD
+restoration. The six-paste comparison repeats three profiles twice without
+changing focus: 650 ms lifetime, five-second lifetime, and five-second lifetime
+with a one-second pre-paste delay. Each trial publishes a unique numbered marker
+and posts one paste. The original clipboard is preserved once for the series.
 
 The probe reuses the existing input-filter counters. Focus/window/input or
 clipboard changes prevent a delayed paste. New copies prevent original-buffer
@@ -199,10 +203,34 @@ synthetic markers and timings, never the saved original payload. The test record
 
 Readiness gate: the risky assumption is that the transient lifetime of dictation
 data, rather than missed clipboard publication, causes stale RDP pastes. The RDP
-delayed-rendering contract is external evidence; controlled lifetime, single
-input, cancellation and exact restoration have local component tests. The probe
-has no physical RDP result yet and does not establish a fix. The ordinary Windows
-adapter still never writes the clipboard. See the test plan for the two trials.
+delayed-rendering contract is external evidence; controlled lifetime, balanced
+input, cancellation and exact restoration have local component tests. Physical
+single trials passed, but the repeated comparison reproduced stale remote text
+even with a five-second lifetime and one-second pre-paste delay. See the
+[behavior baseline](behavior-baseline.md) for evidence and limits. This probe
+does not establish a fix. The ordinary Windows adapter still never writes the
+clipboard. See the test plan for the trial procedures.
+
+Diagnostic builds also expose **Windows Focus Test…**, explicitly started by the
+user. It alternates DIRECT and REFRESH three times, holding each distinct marker
+for five seconds. REFRESH briefly activates a visible, owned helper panel and
+requests activation of the original Windows App process once. It checks actual
+foreground/key-window state, then validates the original remote window before
+posting any paste. It never invokes private Windows App methods or fabricates
+internal window notifications.
+
+The existing input and clipboard guards remain unchanged across the round trip;
+they are not reset to accept user input. Unexpected focus, a newer copy, input,
+permission/readiness failure, cancellation or a one-second activation polling
+deadline stops the experiment. The panel is closed on every exit and activation
+is never retried. This does not make synchronous AppKit calls preemptible or
+prove that Windows App has advertised fresh remote clipboard contents.
+
+The readiness gate is the successful manual focus control in the behavior
+baseline plus mocked phase/cancellation checks. Automatic activation with the
+real client is still an integration experiment. Normal Windows dictation never
+calls this module and remains unchanged. No source-app warning, restoration or
+long-running stability claim follows from these component tests.
 
 ## Launch at login
 

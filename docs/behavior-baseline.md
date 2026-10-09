@@ -240,3 +240,108 @@ These two successful trials do not reproduce or exclude intermittent stale
 remote contents, delayed rendering, or a problem during repeated dictation with
 uninterrupted Windows App focus. No production timing change or stale-paste fix
 is justified by these results alone.
+
+## Stale Windows paste reproduced after the timing probe
+
+Later on 2026-10-09, three actual Flow dictations ran while Windows App remained
+the foreground Mac app. The third inserted the first transcript into remote
+Codex instead of the newly captured text. The second transcript was visible in
+remote Notepad, so this was not a controlled same-field repetition.
+
+For the failed operation, the helper read the new local text in 23 ms and
+completed one balanced native paste sequence in 113 ms. No context cancellation,
+retry or clipboard write by the Windows adapter occurred. Flow restored the
+original local clipboard roughly 550 ms after interception. The macOS log
+recorded Windows App requesting text for both earlier dictations and both
+synthetic probes, but contained no matching request for the failed dictation.
+Absence of that log entry does not independently prove that no read occurred.
+
+Post-report process samples did not capture a persistent hang. A later remote
+clipboard read showed the restored original, which cannot establish its contents
+at the failed paste instant. Additional remote desktop connections were present
+inside the Windows session; their influence is unproven. Raw logs and transcript
+contents remain in ignored local audit storage.
+
+This reproduces stale remote insertion despite a fresh local capture. It does
+not yet distinguish Windows App/RDP publication from cached data in the receiving
+app. The next discriminating check should keep the remote field fixed and record
+the remote clipboard sequence, owner and foreground process without reading data
+until a failure, since a diagnostic read can itself trigger delayed rendering.
+The two successful synthetic probes are not evidence that this bug is fixed.
+
+## Same-field Windows failure with a passive remote observer
+
+Later on 2026-10-09, five consecutive numbered Flow dictations into one remote
+Codex field all inserted an older transcript. Local capture contained each new
+phrase and each operation posted one balanced native paste in 105–115 ms.
+A passive Windows observer recorded no clipboard notification or sequence change
+during those five attempts; the owner remained the RDP clipboard process.
+The receiving Codex process stayed foreground. No persistent Mac-side hang was
+captured in the subsequent process samples.
+
+An ordinary local copy and physical paste then inserted the new marker without
+restarting Windows App. This produced a remote clipboard notification and a
+Windows App native text-read log entry, neither of which appeared during the
+five failed attempts. The next Flow dictation again inserted that manual marker.
+Thus ordinary redirection remained usable while transient dictation data was
+missed. This narrows the fault but does not establish the client's internal
+publication timing or justify a production timeout.
+
+The remote observer never read or wrote clipboard payloads. Its Ctrl+V polling
+counter also missed the successful manual paste, so that counter cannot establish
+native paste receipt. Sequence counters alone are not acknowledgements of text
+delivery, especially with RDP delayed rendering. Raw local and remote diagnostic
+files remain private. The next controlled experiment compares repeated short,
+long and delayed-paste publications without changing focus between trials.
+
+## Repeated synthetic Windows publications: 111.1.3
+
+On 2026-10-09, the diagnostic comparison in signed build **111.1.3** published
+six distinct numbered markers with Windows App continuously focused. The remote
+field was Codex, verified visually. The first marker arrived, followed by five
+copies of that same first marker. No dictation app participated in this test.
+
+The sequence compared a 650 ms publication, a five-second publication and a
+five-second publication with a one-second delay before paste, then repeated
+those three profiles. All six local revisions differed; each native sequence
+completed once without cancellation. Neither longer lifetime nor the added
+pre-paste delay corrected the stale result. The native macOS log recorded one
+Windows App text request, corresponding to the first paste. The helper recorded
+restoration of the original local clipboard after the experiment.
+
+This reproduces the fault independently of Flow and its restoration timing.
+It does not prove that every possible delay fails or identify the client's
+internal cause. The remote passive observer was not running for this series;
+absence of a native log entry alone cannot prove absence of an internal read.
+The first successful paste followed returning from the helper dialog. Earlier
+manual controls also included a focus switch to copy locally, so a physical
+paste while the same target remains focused is a separate outstanding control.
+
+That physical control was then run in the same remote Codex field. After the
+second automatic paste, the owner pressed physical Command+V without copying or
+switching windows. The observed physical Command interval fell within trial
+two's five-second NEW lifetime. The screen contained three copies of trial
+one's marker: the two automatic pastes and the physical paste. The local revision
+stayed on NEW2 until scheduled restoration. The extra input stopped the remaining
+automatic trials, and the original clipboard was restored.
+
+This failure therefore also affects physical paste while the local publication
+changes without a focus transition. It is not limited to Flow or to the helper's
+synthetic shortcut. The individual physical V event was not logged; the control
+is supported by the user's action, physical modifier interval, input counter and
+visible result together. A real leave/return focus transition with the same
+held NEW value remains to be compared before selecting a workaround.
+
+The following manual focus control inserted NEW2 successfully. The owner left
+Windows App for a local window and returned while the same NEW2 revision was
+still present, then pressed physical Command+V before scheduled restoration.
+The remote field showed the first marker twice, followed by the correct second
+marker. No intervening copy, new publication or client restart was needed.
+The helper then cancelled the rest of the series and restored the original.
+
+Together these controls establish a focus-dependent refresh workaround in the
+tested session. They do not establish the safety or speed of automatic activation
+during an actual dictation. The bounded native log collector had ended before
+this later test; its empty output is not evidence of absent client reads. Source
+warnings, transient source restoration and the previously sampled native
+clipboard waits must be considered before applying a focus change automatically.

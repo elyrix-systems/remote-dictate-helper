@@ -155,11 +155,56 @@ dictate, type or manually paste during a trial.
    One success does not settle an intermittent failure. If the sustained mode
    still produces old data, the investigation must test publication/focus or RDP
    state rather than merely extend a source-restoration delay.
+4. **Compare 6 pastes** runs SHORT, HOLD and WAIT twice in the same field,
+   with one focus acquisition and one immutable input/window guard. SHORT holds
+   NEW for 650 ms and begins paste after 25 ms; HOLD changes only the lifetime
+   to five seconds; WAIT additionally waits one second before beginning paste.
+   Allow 35 seconds after clicking the empty field. Each trial has a different
+   numbered marker and one paste, with OLD between trials. Record all six
+   results, including missing, old or previous-trial markers. This isolates
+   lifetime and pre-paste delay without a focus refresh between individual
+   trials; it does not emulate every source format or establish remote receipt.
+   A new copy, input, window change or cancellation must prevent remaining trials.
+
+For a separate physical-key control, explicitly repeat the comparison but press
+physical Command+V once immediately after the second automatic line appears.
+Do not switch focus or copy anything. The second trial keeps its NEW marker for
+five seconds. This deliberate input should stop subsequent automatic trials;
+wait 15 seconds for cleanup. Accept the comparison only when the diagnostic
+input timestamp falls after trial two's paste and before its OLD restoration.
+Otherwise repeat or mark it inconclusive. Record whether the physical paste
+inserted trial two's marker or the earlier value. This distinguishes physical
+from synthetic input without the focus switch present in ordinary copy/paste
+checks. Use only an empty test field and do not send its contents.
 
 Automatic tests use named pasteboards and mocked input. They verify both payload
 lifetimes, all-format and empty restoration, one sequence, cancellation before
 input, balanced keys/protected cleanup on Quit, target timeout and newer-copy
 protection. They do not exercise native Windows App or prove remote receipt.
+The comparison tests also verify distinct markers, all six bounded timings,
+exact restoration and cancellation between trials without a later replay.
+
+## Controlled Windows focus refresh experiment
+
+Requires the local Mac, Windows App, Accessibility and an empty remote test
+field. In a diagnostic build choose **Windows Focus Test… → Start focus test**,
+then click that field within 20 seconds. Do not type, dictate, copy or switch
+windows for 45 seconds. The explicit test briefly shows its own helper panel
+three times; this is expected. No messages should be sent from the field.
+
+Six numbered markers alternate DIRECT and REFRESH, with identical five-second
+publication lifetimes. Record each visible marker. In the previously failing
+session, the discriminating expectation is fresh REFRESH markers even when
+DIRECT reuses an older marker. Compare focus-return elapsed times, errors and
+clipboard revisions. Success is established by the visible remote text, never
+solely by local input or focus logs. Check original local restoration separately.
+
+Automatic tests mock all activation APIs and use only named pasteboards. They
+cover activation refusal/timeout, cancellation, unexpected third-party focus,
+another helper window, original target-window validation, changed input/revision,
+one activation request, panel cleanup and no later paste after failure. Source
+dictation timing/warnings and long-running native client stability remain separate
+integration checks before enabling any automatic focus workaround.
 
 ## Validated baseline
 

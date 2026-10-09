@@ -102,6 +102,8 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
             diagnostics.isEnabled = false; menu.addItem(diagnostics)
             let probe = NSMenuItem(title: "Windows Clipboard Test…", action: #selector(openWindowsClipboardTest), keyEquivalent: "")
             probe.target = self; menu.addItem(probe)
+            let focusProbe = NSMenuItem(title: "Windows Focus Test…", action: #selector(openWindowsFocusTest), keyEquivalent: "")
+            focusProbe.target = self; menu.addItem(focusProbe)
         }
         for (title, action, key) in [
             ("Settings…", #selector(openSettings), ","),
@@ -119,12 +121,33 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         guard DiagnosticLog.shared.enabled, canAcceptPaste else { return }
         let alert = NSAlert()
         alert.messageText = "Test Windows clipboard timing"
-        alert.informativeText = "Use an empty Notepad document on the remote Windows computer. Choose a test, then click that document within 20 seconds. Do not dictate or type.\n\nThe test publishes OLD, then NEW without changing focus, and sends one paste. NEW stays available for 5 seconds or 650 milliseconds. Check whether NEW or OLD appears.\n\nYour original local clipboard is restored afterward unless you copy something new. This is a diagnostic test, not a fix."
+        alert.informativeText = "Use an empty Notepad document on the remote Windows computer. Choose a test, then click that document within 20 seconds. Do not dictate, type or switch windows until the test finishes.\n\nCompare 6 pastes runs SHORT (650 ms), HOLD (5 seconds) and WAIT (5 seconds, paste delayed 1 second), twice without changing focus. Allow 35 seconds. Each trial inserts one numbered marker.\n\nYour original local clipboard is restored afterward unless you copy something new. This is a diagnostic test, not a fix."
+        alert.addButton(withTitle: "Compare 6 pastes")
         alert.addButton(withTitle: "Hold NEW for 5 seconds")
         alert.addButton(withTitle: "Restore OLD after 650 ms")
         alert.addButton(withTitle: "Cancel")
         let response = alert.runModal()
-        guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn, canAcceptPaste else { return }
+        let mode: WindowsClipboardProbe.Mode
+        switch response {
+        case .alertFirstButtonReturn: mode = .comparison
+        case .alertSecondButtonReturn: mode = .sustained
+        case .alertThirdButtonReturn: mode = .transient
+        default: return
+        }
+        startWindowsProbe(mode)
+    }
+    @objc private func openWindowsFocusTest() {
+        guard DiagnosticLog.shared.enabled, canAcceptPaste else { return }
+        let alert = NSAlert()
+        alert.messageText = "Compare clipboard focus refresh"
+        alert.informativeText = "Click an empty remote text field after starting. Do not type, dictate or switch windows for 45 seconds.\n\nSix test pastes alternate DIRECT and REFRESH. Before each REFRESH, a small helper window briefly takes focus and returns to the same Windows App window. Any other input or clipboard change stops the test.\n\nThis experiment tests a possible workaround; automatic dictation is unchanged. Your original local clipboard is restored unless another app or you replace it."
+        alert.addButton(withTitle: "Start focus test")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        startWindowsProbe(.focusComparison)
+    }
+    private func startWindowsProbe(_ mode: WindowsClipboardProbe.Mode) {
+        guard DiagnosticLog.shared.enabled, canAcceptPaste else { return }
         let probe = WindowsClipboardProbe(input: { [weak self] in self?.windowsMonitor?.diagnosticInputStamp },
             status: { [weak self] in self?.setStatus($0) }, finished: { [weak self] cleanupSucceeded in
                 guard let self, self.quitAfterClipboardRestore,
@@ -132,7 +155,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
                 self.completePendingQuit(success: cleanupSucceeded)
             })
         windowsProbe = probe
-        do { try probe.start(response == .alertFirstButtonReturn ? .sustained : .transient) }
+        do { try probe.start(mode) }
         catch { setStatus("Test unavailable: \(error)") }
     }
     @objc private func openProductWebsite() {

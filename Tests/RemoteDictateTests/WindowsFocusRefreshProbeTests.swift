@@ -12,6 +12,9 @@ func testWindowsFocusRefreshProbe() async {
     expectFalse(window is NSPanel)
     expectTrue(window.canBecomeKey, "Diagnostic window must accept key status")
     expectFalse(window.hidesOnDeactivate)
+    expectEqual(window.alphaValue, 0, "Window must be transparent before first ordering")
+    expectFalse(window.hasShadow)
+    expectTrue(window.ignoresMouseEvents, "Transparent focus window must not intercept clicks")
     expectFalse(window.isVisible, "Construction must not activate or show the diagnostic window")
     window.close()
 

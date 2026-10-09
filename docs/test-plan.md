@@ -190,9 +190,9 @@ Requires the local Mac, Windows App, Accessibility and an empty remote test
 field. In a diagnostic build choose **Windows Focus Test… → Start focus test**,
 then click that field within 20 seconds. Do not type, dictate, copy or switch
 windows for 45 seconds. If all steps run, the explicit test briefly activates its
-own ordinary helper window three times; a 42–52 ms round trip may not be visually
-noticeable. No messages should be sent from the field.
-If no window appears or the test stops early, inspect the failure phase and
+own transparent helper window three times. No popup should appear and no messages
+should be sent from the field.
+If the test stops early, inspect the failure phase and
 foreground, key-window, visibility and active-Space metadata. An activation
 timeout is not a completed clipboard comparison; do not count unrun trials.
 
@@ -224,7 +224,9 @@ Windows App and an empty remote field. This flag is absent from normal builds.
 3. Make three distinct numbered dictations into that field without an intervening
    local focus switch, copy or manual paste. Do not send the resulting text.
 4. Check that all three current phrases arrived exactly once, no `v` appeared,
-   and neither the source nor remote input hung. Record any source warning.
+   and neither the source nor remote input hung. Record any source warning or
+   visual flash. The transparent window must still acquire key status and return
+   to the original client window before paste; opacity is not evidence of focus.
 5. Paste into an empty local field after all three operations and confirm that
    the source preserved the original local marker. Record the actual result;
    helper completion alone cannot establish remote receipt or source restoration.

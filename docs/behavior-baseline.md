@@ -388,3 +388,24 @@ timing, absence of source-app warnings or prolonged stability. The next local
 experiment applies the same guarded refresh before a real captured Windows paste,
 behind a separate diagnostic build opt-in. It leaves clipboard publication and
 restoration with the source and RDP. Ordinary builds retain their existing path.
+
+## Real Flow dictation with focus refresh: 111.1.6
+
+The owner reported that all three consecutive Flow dictations and the original
+local clipboard check worked as expected. The remaining reported issue was a
+briefly flashing helper window. Local logs recorded one native paste per source
+revision, completed in 218, 187 and 181 ms, with focus round trips of 75, 64 and
+60 ms. Windows App requested local text for each operation before the source
+returned the clipboard to its previous formats.
+
+The Windows App process had changed before these three operations, so they are
+not proof of repairing the previously stale client without a restart. The
+earlier synthetic focus comparison provides that separate evidence. All three
+real operations used the same new client process. This is local Flow acceptance,
+not a prolonged stability trial or physical retest of other dictation sources.
+
+The following candidate makes the owned window transparent before ordering,
+removes its shadow and allows mouse clicks through it. Window style, activation,
+revision/input checks, key sequence and deadlines remain the same. Construction
+and regression tests cannot establish native activation or absence of visible
+flashes; those remain a local check on the installed candidate.

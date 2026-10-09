@@ -138,7 +138,9 @@ the setting belongs to the local bundle, not saved user preferences.
 
 This experiment adds one guarded helper-window/Windows App focus round trip
 after the source's local clipboard data and physical modifiers are ready, before
-the existing native paste. It never writes or restores the Windows-path clipboard;
+the existing native paste. The helper window is transparent and shadowless;
+`windowAlpha=0` records that mode, while `windowVisible` only means ordered.
+It never writes or restores the Windows-path clipboard;
 the dictation source and RDP keep those responsibilities. Changed clipboard,
 input, modifiers, trust or target stop the operation; there is no retry.
 `experimental-focus-refresh-start`, phase/window-state logs and

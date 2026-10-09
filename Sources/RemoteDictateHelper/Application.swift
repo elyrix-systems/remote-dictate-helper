@@ -146,7 +146,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         guard DiagnosticLog.shared.enabled, canAcceptPaste else { return }
         let alert = NSAlert()
         alert.messageText = "Compare clipboard focus refresh"
-        alert.informativeText = "Click an empty remote text field after starting. Do not type, dictate or switch windows for 45 seconds.\n\nSix test pastes alternate DIRECT and REFRESH. Before each REFRESH, a small helper window briefly takes focus and returns to the same Windows App window. Any other input or clipboard change stops the test.\n\nThis experiment tests a possible workaround; automatic dictation is unchanged. Your original local clipboard is restored unless another app or you replace it."
+        alert.informativeText = "Click an empty remote text field after starting. Do not type, dictate or switch windows for 45 seconds.\n\nSix test pastes alternate DIRECT and REFRESH. Before each REFRESH, a transparent helper window briefly takes focus and returns to the same Windows App window. There is no visible popup. Any other input or clipboard change stops the test.\n\nThis synthetic comparison is separate from dictation. Your original local clipboard is restored unless another app or you replace it."
         alert.addButton(withTitle: "Start focus test")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }

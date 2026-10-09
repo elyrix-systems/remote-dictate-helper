@@ -1,6 +1,7 @@
 import AppKit
 
-/// Diagnostic only. A real, visible activation round trip, not a private
+/// Diagnostic only. A real activation round trip with a transparent owned window,
+/// not a private
 /// Windows App notification or an acknowledgement of remote clipboard delivery.
 @MainActor
 enum WindowsFocusRefreshProbe {
@@ -90,6 +91,12 @@ enum WindowsFocusRefreshProbe {
         window.title = "Windows clipboard test"
         window.isReleasedWhenClosed = false
         window.animationBehavior = .none
+        // Keep the proven normal-window activation path, but do not render a
+        // popup or intercept a mouse click while focus is borrowed. This is
+        // applied before ordering the window; no fade/animation or extra wait.
+        window.alphaValue = 0
+        window.hasShadow = false
+        window.ignoresMouseEvents = true
         window.collectionBehavior = [.transient, .moveToActiveSpace, .fullScreenAuxiliary]
         let label = NSTextField(labelWithString: "Checking focus refresh…")
         label.frame = NSRect(x: 20, y: 22, width: 260, height: 20)
@@ -116,7 +123,7 @@ enum WindowsFocusRefreshProbe {
             now: { ProcessInfo.processInfo.systemUptime },
             pause: { try await Task.sleep(for: .milliseconds(10)) },
             nativeState: {
-                "appActive=\(NSApp.isActive) appHidden=\(NSApp.isHidden) policy=\(NSApp.activationPolicy().rawValue) windowVisible=\(window.isVisible) windowKey=\(window.isKeyWindow) windowMain=\(window.isMainWindow) canBecomeKey=\(window.canBecomeKey) onActiveSpace=\(window.isOnActiveSpace)"
+                "appActive=\(NSApp.isActive) appHidden=\(NSApp.isHidden) policy=\(NSApp.activationPolicy().rawValue) windowVisible=\(window.isVisible) windowAlpha=\(window.alphaValue) windowKey=\(window.isKeyWindow) windowMain=\(window.isMainWindow) canBecomeKey=\(window.canBecomeKey) onActiveSpace=\(window.isOnActiveSpace)"
             })
         try await perform(targetPID: targetPID, environment: environment,
                           validateStable: validateStable, validateTarget: validateTarget, log: log)

@@ -213,7 +213,7 @@ clipboard. See the test plan for the trial procedures.
 
 Diagnostic builds also expose **Windows Focus Test…**, explicitly started by the
 user. It alternates DIRECT and REFRESH three times, holding each distinct marker
-for five seconds. REFRESH briefly activates a visible, owned helper window and
+for five seconds. REFRESH briefly activates a transparent, owned helper window and
 requests activation of the original Windows App process once. It checks actual
 foreground/key-window state, then validates the original remote window before
 posting any paste. It never invokes private Windows App methods or fabricates
@@ -232,6 +232,9 @@ yields activation to the original target before requesting its return. Phase and
 window-state logs distinguish failure to acquire helper focus from failure to
 return; unchanged polling state is not repeatedly logged. Activation remains an
 OS request, not a guaranteed transition or remote clipboard acknowledgement.
+The window is fully transparent, shadowless and mouse-transparent before its
+first ordering. Its ordinary key-window activation path is retained. The logged
+`windowVisible` means ordered, not visible pixels; `windowAlpha` records opacity.
 
 The readiness gate now includes the successful manual focus control and the
 automatic six-marker comparison in the behavior baseline, plus mocked

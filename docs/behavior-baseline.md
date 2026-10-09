@@ -409,3 +409,23 @@ removes its shadow and allows mouse clicks through it. Window style, activation,
 revision/input checks, key sequence and deadlines remain the same. Construction
 and regression tests cannot establish native activation or absence of visible
 flashes; those remain a local check on the installed candidate.
+
+## Transparent focus refresh accepted for local use: 111.1.7
+
+The owner accepted the installed transparent-window candidate for ordinary local
+use, reporting that a slight residual flicker remained but was tolerable. Do not
+describe the workaround as entirely invisible or flicker-free.
+
+Eight observed Flow operations through the same Windows App process completed
+with one native paste each and no recorded cancellation or error. They took
+173–219 ms from capture to native-sequence completion. In every operation the
+owned window acquired key/foreground status with zero opacity, then returned to
+the original client. The native log collector recorded a text request for each.
+These logs establish the local protocol, not independent remote receipt for
+every operation; user acceptance supplies the real-world result.
+
+The candidate remains a separately enabled local diagnostic experiment. This
+acceptance does not establish prolonged stability, sleep/reconnection behavior
+or new physical checks of other dictation sources. The user accepts the residual
+visual effect, so further appearance changes are deferred rather than altering
+the working activation sequence.

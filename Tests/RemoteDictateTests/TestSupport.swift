@@ -74,6 +74,7 @@ struct TestRunner {
         try await windows.testDiagnosticTextStages()
         try await windows.testClipboardPreparationGuards()
         try await testWindowsClipboardReader()
+        try await testWindowsClipboardProbe()
         try windows.testPhysicalModifierTracking()
         try testExplicitClipboardTransferRecovery()
         try testLegacyCoreCompatibility()

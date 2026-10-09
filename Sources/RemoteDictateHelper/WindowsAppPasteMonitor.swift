@@ -18,6 +18,7 @@ enum WindowsAppPasteError: Error, CustomStringConvertible {
 /// local text data before replay; RDP delivery remains unobservable here.
 @MainActor
 final class WindowsAppPasteMonitor {
+    struct InputStamp: Equatable { let keys: UInt64; let modifiers: UInt64 }
     static let bundleIdentifier = "com.microsoft.rdc.macos"
     typealias WindowValidation = () throws -> Void
     private let sources: [DictationSource]
@@ -44,6 +45,13 @@ final class WindowsAppPasteMonitor {
     private var lastRevision: Int?
     private var generation = 0
     private(set) var isBusy = false
+
+    /// Reuse the installed filter's counters for explicit diagnostic input;
+    /// never create another tap or perform application lookup for the probe.
+    var diagnosticInputStamp: InputStamp? {
+        guard filterHealthy, let filter else { return nil }
+        return InputStamp(keys: filter.inputSequence, modifiers: filter.physicalModifierSequence)
+    }
 
     init(sources: [DictationSource], isAvailable: @escaping () -> Bool,
          targetPID: @escaping () -> pid_t? = {

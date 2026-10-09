@@ -23,10 +23,12 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     private var contextCancelled = false
     private var quitAfterClipboardRestore = false
     private let diagnosticContext = DiagnosticContextObserver()
+    private var windowsProbe: WindowsClipboardProbe?
     private lazy var launchAtLogin = LaunchAtLogin(report: { [weak self] in self?.appendLog("login item \($0)") })
     private var busy: Bool {
         runningTask != nil || sharedClipboardLease != nil || clipboardRestoration.hasPendingRestore || clipboardSession != nil
             || windowsMonitor?.isBusy == true
+            || windowsProbe?.isBusy == true
     }
     private var canAcceptPaste: Bool { !quitAfterClipboardRestore && !busy }
     private lazy var clipboardRestoration = LocalClipboardRestoration(onOutcome: { [weak self] outcome, receipt in
@@ -75,11 +77,12 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         diagnosticContext.stop(); DiagnosticLog.shared.flush()
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        windowsProbe?.cancel()
         cancelCurrentOperation()
         monitor?.stop(); monitor = nil
-        guard clipboardRestoration.hasPendingRestore || sharedClipboardLease != nil else { return .terminateNow }
+        guard clipboardRestoration.hasPendingRestore || sharedClipboardLease != nil || windowsProbe?.isBusy == true else { return .terminateNow }
         quitAfterClipboardRestore = true
-        setStatus("Finishing before quit; return to Screen Sharing")
+        setStatus(windowsProbe?.isBusy == true ? "Finishing clipboard test before quit" : "Finishing before quit; return to Screen Sharing")
         return .terminateLater
     }
     private func configureMenu() {
@@ -97,6 +100,8 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
             let diagnostics = NSMenuItem(title: DiagnosticLog.shared.textEnabled
                 ? "Diagnostic text logging enabled" : "Diagnostic logging enabled", action: nil, keyEquivalent: "")
             diagnostics.isEnabled = false; menu.addItem(diagnostics)
+            let probe = NSMenuItem(title: "Windows Clipboard Test…", action: #selector(openWindowsClipboardTest), keyEquivalent: "")
+            probe.target = self; menu.addItem(probe)
         }
         for (title, action, key) in [
             ("Settings…", #selector(openSettings), ","),
@@ -110,6 +115,26 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         quit.target = self; menu.addItem(quit)
     }
     @objc private func quit() { NSApp.terminate(nil) }
+    @objc private func openWindowsClipboardTest() {
+        guard DiagnosticLog.shared.enabled, canAcceptPaste else { return }
+        let alert = NSAlert()
+        alert.messageText = "Test Windows clipboard timing"
+        alert.informativeText = "Use an empty Notepad document on the remote Windows computer. Choose a test, then click that document within 20 seconds. Do not dictate or type.\n\nThe test publishes OLD, then NEW without changing focus, and sends one paste. NEW stays available for 5 seconds or 650 milliseconds. Check whether NEW or OLD appears.\n\nYour original local clipboard is restored afterward unless you copy something new. This is a diagnostic test, not a fix."
+        alert.addButton(withTitle: "Hold NEW for 5 seconds")
+        alert.addButton(withTitle: "Restore OLD after 650 ms")
+        alert.addButton(withTitle: "Cancel")
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn, canAcceptPaste else { return }
+        let probe = WindowsClipboardProbe(input: { [weak self] in self?.windowsMonitor?.diagnosticInputStamp },
+            status: { [weak self] in self?.setStatus($0) }, finished: { [weak self] cleanupSucceeded in
+                guard let self, self.quitAfterClipboardRestore,
+                      !self.clipboardRestoration.hasPendingRestore, self.sharedClipboardLease == nil else { return }
+                self.completePendingQuit(success: cleanupSucceeded)
+            })
+        windowsProbe = probe
+        do { try probe.start(response == .alertFirstButtonReturn ? .sustained : .transient) }
+        catch { setStatus("Test unavailable: \(error)") }
+    }
     @objc private func openProductWebsite() {
         guard let url = URL(string: "https://elyrix-systems.com/remote-dictate-helper/") else { return }
         NSWorkspace.shared.open(url)

@@ -178,6 +178,32 @@ These are local integration results, not universal production compatibility.
 Changes to OS permissions, input routing or another app's protocol require a
 small physical spike before expanding support. See [test-plan.md](test-plan.md).
 
+## Explicit Windows clipboard timing probe
+
+Diagnostic builds expose **Windows Clipboard Test…** for a controlled local
+experiment; release builds do not show this command. It is never called by the
+automatic dictation adapter. The user selects a mode and then focuses an empty
+remote test field. The probe preserves the full original clipboard through the
+bounded isolated reader, publishes an OLD marker before entering Windows App,
+then publishes a unique NEW marker while the remote window remains focused.
+It uses the production native sender exactly once. NEW remains available for
+five seconds or 650 ms before an intentional synthetic OLD restoration.
+
+The probe reuses the existing input-filter counters. Focus/window/input or
+clipboard changes prevent a delayed paste. New copies prevent original-buffer
+restoration. Normal Quit cancels input, balances keys and allows pending clipboard
+cleanup to finish. There are no additional taps, background polling sessions,
+Screen Sharing menu operations or synchronous provider reads. Logs contain the
+synthetic markers and timings, never the saved original payload. The test records
+`remoteReceipt=unverified`; the visible remote result must be checked separately.
+
+Readiness gate: the risky assumption is that the transient lifetime of dictation
+data, rather than missed clipboard publication, causes stale RDP pastes. The RDP
+delayed-rendering contract is external evidence; controlled lifetime, single
+input, cancellation and exact restoration have local component tests. The probe
+has no physical RDP result yet and does not establish a fix. The ordinary Windows
+adapter still never writes the clipboard. See the test plan for the two trials.
+
 ## Launch at login
 
 The first launch from `/Applications` or `~/Applications` registers

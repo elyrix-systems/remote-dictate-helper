@@ -214,3 +214,17 @@ Its signing requirement matched the previous copy; both active filters started
 without renewed Accessibility permission. Physical dictation and prolonged use
 remain to be checked. This establishes the deadline correction, not the cause of
 an earlier source-app hang or a fix for stale remote Windows clipboard contents.
+
+## Local Windows clipboard timing probe: 111.1.2
+
+On 2026-10-09, the signed diagnostic build **1.1.1 / build 111.1.2** was installed
+and launched with the previous signing requirement. Both existing paste filters
+started without another Accessibility grant. Automatic dictation behavior is
+unchanged. The new diagnostic-only command must be invoked explicitly.
+
+The complete regression suite passed, including the probe's two synthetic data
+lifetimes, exact full-format/empty restoration, one native sequence, newer-copy
+protection, context/input cancellation and balanced keys during shutdown. These
+checks used named pasteboards and mocked input. The probe has not yet run against
+the user's occupied Windows App session; no remote result or stale-paste fix is
+claimed from this installation.

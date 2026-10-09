@@ -137,6 +137,30 @@ markers and select the dictation app in Settings; do not change administrator po
    actual remote result. Record stale text, missing input and any source warning
    separately. Successful reads alone do not validate RDP delivery or this fix.
 
+## Controlled Windows clipboard lifetime experiment
+
+Available only in a diagnostic build via **Windows Clipboard Test…**. Requires
+the user's local Mac, Accessibility and an empty remote Notepad document. Run
+when the remote screen is free. Do not use a real document, send a message,
+dictate, type or manually paste during a trial.
+
+1. Choose **Hold NEW for 5 seconds**, then click the empty Notepad field within
+   20 seconds. The probe seeds OLD before focus enters Windows App, waits one
+   second, publishes NEW with focus unchanged, and posts one native paste.
+   Record the complete visible marker (NEW, OLD, neither or another value).
+2. In a fresh empty field repeat **Restore OLD after 650 ms**. Native input is
+   identical; only the NEW publication lifetime changes. Check the original
+   local clipboard after cleanup without making a new copy first.
+3. Match each observation to its `client=windows-probe` operation and marker.
+   One success does not settle an intermittent failure. If the sustained mode
+   still produces old data, the investigation must test publication/focus or RDP
+   state rather than merely extend a source-restoration delay.
+
+Automatic tests use named pasteboards and mocked input. They verify both payload
+lifetimes, all-format and empty restoration, one sequence, cancellation before
+input, balanced keys/protected cleanup on Quit, target timeout and newer-copy
+protection. They do not exercise native Windows App or prove remote receipt.
+
 ## Validated baseline
 
 The accepted physical paste behavior and its limits are recorded in

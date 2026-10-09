@@ -19,11 +19,14 @@ The custom native runner works with Command Line Tools without XCTest.
 | Capture | Empty results, same text in distinct revisions, original snapshot selection, zero-item original returned as empty UTF-8 text, refusal of unknown/nonempty returns, bounded history, focus/input cancellation, no queued or stale replay. |
 | Release | Return to Screen Sharing before paste starts a fresh transaction; missing source key-up and clipboard return have distinct timeout diagnostics; logs omit clipboard contents. |
 | Diagnostics | Explicit build opt-in, no file when disabled, bounded rotation/private files/symlink refusal, no transcript in failure logs, distinct click/key/foreground/clipboard/modifier reasons and unchanged cancellation/key release. Live context sampling and observer overhead require the local diagnostic app. |
+| Diagnostic text opt-in | Two explicit build flags; metadata-only and disabled builds omit text. Isolated named-board UTF-8 capture, escaped Russian/multiline round-trip, size bounds and truncation, unavailable invalid UTF-8, unchanged formats/revisions, source-only capture in both adapters, operation linkage through cancellation, existing-file privacy and symlink refusal. These establish local capture, not remote receipt. |
 | Interception | Manual/local/unknown input passes through; accepted down/up pairing; slow capture and disabled filter fail safely; no deletion. |
+| Input-filter liveness | Blocked source lookup/admission returns within the capture budget, bounds outstanding work across filter restarts and cannot capture late; ordinary/manual/self input skips source lookup; stalled admission in both adapters cannot schedule input or a clipboard read after expiry. No real events posted. |
 | Shared source contract | Real event classification into both client monitors for Flow, superwhisper, Valis and a custom source; main/helper bundle IDs, consecutive captures and both clipboard-return policies. Removed/disabled sources pass through. No running dictation apps required. |
 | Clipboard | Full-format original restoration, UTF-8 HTML transport, empty originals, clipboard ownership, newer/equal-text copies and restoration deadlines. |
 | Input | Exactly one private Command+V; permission/target/modifier refusal; mid-sequence release; HID residue guards and no retry. |
 | Windows App | Consecutive source pastes, busy and revision guards, manual/local/self input exclusion, complete private Command+V flags/types, Fn release, target/window/input/clipboard cancellation, balanced release on Quit and disabled filter. No clipboard writes or real keystrokes. |
+| Windows focus refresh | All selected sources and repeated pastes refresh before keys; both activation phases, deadline/refusal, window cleanup, other-app/window/input/modifier/revision/trust changes, Quit and disabled filters stop without a late paste. Transparent key-eligible window construction; no actual activation. |
 | Clipboard isolation | Real subprocess reads of rich/multiple-item and deferred named boards; a provider blocked for 60 seconds cannot block the main actor; timeout/cancellation reaps only the owned reader; following revisions remain readable; expired capture cannot replay. Full capture/release/restoration uses the production asynchronous reader. |
 | Windows clipboard preparation | Read before all native keys; named-board text/rich formats unchanged, empty/missing/stale data refused, timeout and cancellation release the caller, one owned reader with reaping on timeout, late completion cannot replay, context changes during reading cancel input. |
 | Completion | Deferred cleanup readiness, single completion attempt, busy refusal and errors. |
@@ -92,7 +95,7 @@ log or replace physical integration checks with mocked events.
 
 ## Local hang-fix check
 
-Use the signed diagnostic candidate on the local Mac. Confirm Settings and Quit
+Use a signed diagnostic build on the local Mac. Confirm Settings and Quit
 remain responsive while entering/leaving Screen Sharing, including after normal
 sleep. Repeat ordinary clipboard paste and a synthetic dictation with exact local
 clipboard restoration. Repeat a Windows App dictation; record stale remote data
@@ -100,6 +103,13 @@ separately, since isolation does not establish RDP readiness. Read-timeout logs
 must name baseline/candidate/source-return, the revision and failure without text.
 Do not trigger an artificial stall on the general clipboard or force-stop a source
 app to test this. The deliberate hung-provider test uses a disposable named board.
+
+For input-filter liveness checks, repeat Flow and superwhisper dictations
+in both clients and check that the source, helper menu and normal keyboard input
+remain responsive. Verify one insertion and the existing source/target clipboard
+restoration behavior. A recovered process sample cannot establish the cause of a
+previous hang. The deadline tests establish local refusal of late work, not remote
+receipt or resolution of the separate stale RDP clipboard issue.
 
 ## Windows App physical checks
 
@@ -122,11 +132,34 @@ markers and select the dictation app in Settings; do not change administrator po
 5. Test repeated operations and Quit after installation. Record any source warning
    separately from remote text arrival. When investigating a source-specific issue,
    record its paste/clipboard settings and compare it with the shared contract.
-6. For the local clipboard-read candidate, repeat distinct phrases and the first
+6. Repeat distinct phrases and the first
    dictation after normal sleep/reconnection, without a preparatory local paste or
-   recopy. Compare `clipboard-read-ready` timing/revision with native input and the
+   recopy. Compare local read/focus-return timing and revision with native input and the
    actual remote result. Record stale text, missing input and any source warning
    separately. Successful reads alone do not validate RDP delivery or this fix.
+
+## Windows focus refresh regression check
+
+The normal Windows App path now performs one guarded focus round trip before
+paste. Keep Windows App in the same session and remote field for at least three
+distinct dictations, without a local focus switch, copy or manual paste between
+them. Check fresh text each time, the intact prefix, no duplicate/`v`, source
+responsiveness and source restoration of the original local clipboard. Record
+any warning or visual flash; a slight focus flicker was accepted on the tested Mac.
+Repeat after ordinary sleep/reconnection and during extended use. Those scenarios
+remain integration checks, not guarantees from the component suite.
+
+The helper's transparent window must acquire foreground/key status and return to
+the original Windows App window before keys are sent. Changing input, clipboard,
+modifiers, permission or destination cancels instead of retrying. Component tests
+mock activation for all default/custom sources, repeated revisions, both focus
+phases, timeouts/refusal, Quit and disabled filters. Construction checks do not
+show a window or prove macOS will grant activation. Local focus logs do not
+acknowledge remote receipt.
+
+Historical trial procedures and their results are preserved in the
+[Windows experiment archive](experiments/windows-clipboard-2026-10-09.md).
+The experimental menus and synthetic clipboard publisher are no longer shipped.
 
 ## Validated baseline
 

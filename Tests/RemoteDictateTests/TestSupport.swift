@@ -33,11 +33,16 @@ struct TestRunner {
         try await testAsyncCaptureAndExpiredDecision()
         if CommandLine.arguments.contains("--isolation-only") { return }
         testCaptureDecisionDeadline()
+        try await testPasteFilterLiveness()
+        try await testBlockedAdmissionLiveness()
+        try await testLateAdmissionCannotReplay()
         testSettingsReadiness()
         testAccessibilitySettingsNavigation()
         try testLaunchAtLogin()
         try testOperationalLog()
         try testDiagnosticLogStorage()
+        try testDiagnosticTextLogging()
+        try testScreenSharingDiagnosticTextCapture()
         try testCaptureCancellationDiagnostics()
         try testSettingsPersistence()
         try testImmediateSourceSettings()
@@ -50,7 +55,7 @@ struct TestRunner {
         try release.testReturnBeforePasteStartsFreshTransaction()
         try release.testTimeoutDistinguishesKeyReleaseFromClipboard()
         let interception = InterceptionTests()
-        try interception.testAllConfiguredSources()
+        try await interception.testAllConfiguredSources()
         try interception.testSuppressionScopeAndRelease()
         try interception.testAppThatLeavesItsTranscript()
         interception.testSlowCapturePassesOriginalThrough()
@@ -66,8 +71,11 @@ struct TestRunner {
         try await windows.testRepeatedPasteAndScope()
         try await windows.testChangedContextAndShutdown()
         try await windows.testDiagnosticReasons()
+        try await windows.testDiagnosticTextStages()
         try await windows.testClipboardPreparationGuards()
+        try await windows.testFocusRefreshGuards()
         try await testWindowsClipboardReader()
+        await testWindowsFocusRefresh()
         try windows.testPhysicalModifierTracking()
         try testExplicitClipboardTransferRecovery()
         try testLegacyCoreCompatibility()
@@ -78,12 +86,12 @@ struct TestRunner {
 func testCaptureDecisionDeadline() {
     let late = PasteCaptureDecision(wait: 0)
     expectFalse(late.wait())
-    late.evaluate { fail("Expired capture must be inert") }
+    expectFalse(late.resolve(true), "Expired capture must be inert")
     let accepted = PasteCaptureDecision()
-    accepted.evaluate { true }
+    accepted.resolve(true)
     expectTrue(accepted.wait())
     let refused = PasteCaptureDecision()
-    refused.evaluate { false }
+    refused.resolve(false)
     expectFalse(refused.wait())
 }
 

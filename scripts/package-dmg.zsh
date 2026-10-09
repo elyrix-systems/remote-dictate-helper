@@ -17,6 +17,8 @@ case "$mode" in
   *) print -u2 'error: package mode must be preview or notarized'; exit 1 ;;
 esac
 export REMOTE_DICTATE_CONFIGURATION=release REMOTE_DICTATE_ARCHS=arm64
+# Downloadable packages never inherit private developer transcript logging.
+export REMOTE_DICTATE_DIAGNOSTICS=0 REMOTE_DICTATE_DIAGNOSTIC_TEXT=0
 package_root="$repo_root/.build/package"
 staging="$(mktemp -d "${TMPDIR:-/tmp}/rdh-package.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT

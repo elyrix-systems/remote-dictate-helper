@@ -26,11 +26,12 @@ final class PasteCaptureDecision: @unchecked Sendable {
     private var accepted = false
     init(wait: TimeInterval = 0.08) { deadline = ProcessInfo.processInfo.systemUptime + wait }
     var remaining: TimeInterval { max(0, deadline - ProcessInfo.processInfo.systemUptime) }
-    // The body must only commit prepared state: no provider reads or waiting.
-    @discardableResult func evaluate(_ body: () -> Bool) -> Bool {
+    // No caller code runs under this lock. A slow admission check cannot extend
+    // the tap deadline or commit a paste after the original input passed through.
+    @discardableResult func resolve(_ value: Bool) -> Bool {
         lock.lock(); defer { lock.unlock() }
         guard !completed, ProcessInfo.processInfo.systemUptime < deadline else { return false }
-        accepted = body(); completed = true; ready.signal()
+        accepted = value; completed = true; ready.signal()
         return true
     }
     func wait() -> Bool {
@@ -43,14 +44,18 @@ final class PasteCaptureDecision: @unchecked Sendable {
 }
 
 /// The tap runs on its own run loop. Slow Screen Sharing AX/menu transitions on
-/// the main thread cannot stall ordinary keys or the helper's replay. Only a
-/// configured source's candidate V-down uses a short main-thread handoff.
+/// the main thread cannot stall ordinary keys or the helper's replay. Synthetic
+/// Command+V candidates share one deadline for source lookup and admission.
 final class PasteEventFilter: @unchecked Sendable {
     private let sources: [DictationSource]
     private let onEvent: @Sendable (PasteInputEvent, PasteCaptureDecision?) -> Void
     private let onDisabled: @Sendable () -> Void
     private let trackPhysicalModifiers: Bool
     private let sourceIdentifier: @Sendable (pid_t) -> String?
+    // Shared across both client filters and stop/start cycles. Even an OS call
+    // that never returns cannot accumulate lookup workers as filters restart.
+    private static let sourceQueue = DispatchQueue(label: "systems.elyrix.RemoteDictateHelper.source-identity")
+    private static let sourceSlot = DispatchSemaphore(value: 1)
     private let lock = NSLock()
     private let ready = DispatchSemaphore(value: 0)
     private var loop: CFRunLoop?
@@ -58,6 +63,8 @@ final class PasteEventFilter: @unchecked Sendable {
     private var stopped = false
     private var suppressedPID: pid_t?
     private var suppressedAt: TimeInterval = 0
+    private var suppressedSource: PasteInputEvent?
+    private var resolvedSource: PasteInputEvent?
     private var sequence: UInt64 = 0
     private var modifiers: UInt64 = 0
     private var lastInput = "none"
@@ -135,20 +142,23 @@ final class PasteEventFilter: @unchecked Sendable {
             return false
         }
         guard pid != ownPID else { return false }
-        let identifier = pid > 0 ? sourceIdentifier(pid) : nil
-        let source = sources.first { $0.matches(identifier) }
         var input = PasteInputEvent(kind: type == .keyDown ? .down : type == .keyUp ? .up : .mouse,
             key: UInt16(clamping: event.getIntegerValueField(.keyboardEventKeycode)),
-            command: event.flags.contains(.maskCommand), pid: pid, fromDictation: source != nil,
-            clipboardReturn: source?.clipboardReturn ?? .restoresPrevious,
+            command: event.flags.contains(.maskCommand), pid: pid, fromDictation: false,
             autorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0)
-        input.sourceBundle = identifier; input.flags = event.flags.rawValue
+        input.flags = event.flags.rawValue
         input.eventUptime = Double(event.timestamp) / 1_000_000_000
         lock.lock()
         if ProcessInfo.processInfo.systemUptime - suppressedAt > 5 { suppressedPID = nil }
         let paired = suppressedPID == pid && input.key == 9 &&
             (input.kind == .up || (input.kind == .down && input.autorepeat))
-        if paired && input.kind == .up { suppressedPID = nil }
+        if paired, let source = suppressedSource {
+            input = PasteInputEvent(kind: input.kind, key: input.key, command: input.command,
+                pid: pid, fromDictation: true, clipboardReturn: source.clipboardReturn,
+                autorepeat: input.autorepeat, sourceBundle: source.sourceBundle,
+                flags: input.flags, eventUptime: input.eventUptime)
+        }
+        if paired && input.kind == .up { suppressedPID = nil; suppressedSource = nil }
         lock.unlock()
         if paired { onEvent(input, nil); return true }
         lock.lock()
@@ -158,16 +168,47 @@ final class PasteEventFilter: @unchecked Sendable {
             lastInput = input.diagnosticMetadata
         }
         lock.unlock()
-        guard input.fromDictation, input.kind == .down, input.key == 9, input.command, !input.autorepeat else {
+        guard pid > 0, input.kind == .down, input.key == 9, input.command, !input.autorepeat else {
             onEvent(input, nil); return false
         }
         let decision = PasteCaptureDecision()
         let decisionStarted = ProcessInfo.processInfo.systemUptime
-        onEvent(input, decision)
+        // Launch Services may block. Resolve only candidate pastes off the tap,
+        // inside the same deadline. One outstanding lookup bounds resource use
+        // even if the external service never replies. Ordinary input does no IPC.
+        guard Self.sourceSlot.wait(timeout: .now()) == .success else {
+            DiagnosticLog.shared.record("filter.source_lookup_busy physicalModifiers=\(trackPhysicalModifiers) originalInput=allowed \(input.diagnosticMetadata)")
+            onEvent(input, nil); return false
+        }
+        let candidate = input
+        Self.sourceQueue.async { [self] in
+            let identifier: String? = {
+                defer { Self.sourceSlot.signal() }
+                guard decision.remaining > 0 else { return nil }
+                return sourceIdentifier(pid)
+            }()
+            // Release the lookup slot before dispatching admission. Otherwise a
+            // quick refusal from one client could make the other client's tap
+            // skip the same event while this worker was still releasing its slot.
+            guard decision.remaining > 0 else { return }
+            guard let source = sources.first(where: { $0.matches(identifier) }) else {
+                onEvent(candidate, nil); decision.resolve(false); return
+            }
+            let classified = PasteInputEvent(kind: candidate.kind, key: candidate.key,
+                command: candidate.command, pid: pid, fromDictation: true,
+                clipboardReturn: source.clipboardReturn, autorepeat: candidate.autorepeat,
+                sequence: candidate.sequence, sourceBundle: identifier,
+                flags: candidate.flags, eventUptime: candidate.eventUptime)
+            lock.lock(); let inactive = stopped; resolvedSource = inactive ? nil : classified; lock.unlock()
+            guard !inactive else { decision.resolve(false); return }
+            onEvent(classified, decision)
+        }
         let accepted = decision.wait()
-        DiagnosticLog.shared.record("filter.decision physicalModifiers=\(trackPhysicalModifiers) accepted=\(accepted) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - decisionStarted) * 1000)) \(input.diagnosticMetadata)")
+        lock.lock(); let classified = resolvedSource?.sequence == candidate.sequence ? resolvedSource : nil; lock.unlock()
+        DiagnosticLog.shared.record("filter.decision physicalModifiers=\(trackPhysicalModifiers) accepted=\(accepted) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - decisionStarted) * 1000)) \((classified ?? input).diagnosticMetadata)")
         if accepted {
-            lock.lock(); suppressedPID = pid; suppressedAt = ProcessInfo.processInfo.systemUptime; lock.unlock()
+            lock.lock(); suppressedPID = pid; suppressedSource = classified
+            suppressedAt = ProcessInfo.processInfo.systemUptime; lock.unlock()
         }
         return accepted
     }

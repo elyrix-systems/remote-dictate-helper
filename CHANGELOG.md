@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## 1.1.2 — 2026-10-09
+
+- Refresh Windows App focus before dictation paste to address repeated insertion
+  of an older clipboard value. Use a transparent helper window, return to the
+  same remote-client window and paste once. A slight focus flicker may remain.
+- Keep the input filter responsive when source-app lookup or admission stalls;
+  expired capture decisions cannot schedule a late paste.
+- Remove temporary clipboard/focus test menus, synthetic clipboard publishers
+  and the experimental build switch. Preserve the investigation and results in
+  the [experiment archive](https://github.com/elyrix-systems/remote-dictate-helper/blob/v1.1.2/docs/experiments/windows-clipboard-2026-10-09.md).
+- Retain regression coverage for the shared dictation-source path, cancellation,
+  clipboard ownership and restoration. Maintainer builds can explicitly opt in
+  to private, bounded local transcript diagnostics; downloads leave them off.
+
+Validation: the owner accepted repeated Flow dictations and preserved local
+clipboard contents with the focus refresh, including its transparent-window
+candidate. Automated checks cover all configured source identities and failure
+guards with mocked input/activation. Long-running use, first paste after sleep
+and all RDP endpoints are not established by these trials. Windows App still owns
+RDP redirection and the dictation app owns restoration; the helper does not write
+that clipboard. Apple Screen Sharing's transfer protocol is unchanged. Downloads
+remain ad-hoc signed and not Apple notarized.
+
 ## 1.1.1 — 2026-10-07
 
 - Prevent delayed or unavailable clipboard data from freezing the helper.

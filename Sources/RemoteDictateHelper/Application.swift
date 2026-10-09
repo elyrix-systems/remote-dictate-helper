@@ -94,7 +94,8 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         let scope = NSMenuItem(title: "Apple Screen Sharing & Windows App", action: nil, keyEquivalent: "")
         scope.isEnabled = false; menu.addItem(scope)
         if DiagnosticLog.shared.enabled {
-            let diagnostics = NSMenuItem(title: "Diagnostic logging enabled", action: nil, keyEquivalent: "")
+            let diagnostics = NSMenuItem(title: DiagnosticLog.shared.textEnabled
+                ? "Diagnostic text logging enabled" : "Diagnostic logging enabled", action: nil, keyEquivalent: "")
             diagnostics.isEnabled = false; menu.addItem(diagnostics)
         }
         for (title, action, key) in [

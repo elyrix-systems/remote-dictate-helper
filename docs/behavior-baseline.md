@@ -225,6 +225,18 @@ unchanged. The new diagnostic-only command must be invoked explicitly.
 The complete regression suite passed, including the probe's two synthetic data
 lifetimes, exact full-format/empty restoration, one native sequence, newer-copy
 protection, context/input cancellation and balanced keys during shutdown. These
-checks used named pasteboards and mocked input. The probe has not yet run against
-the user's occupied Windows App session; no remote result or stale-paste fix is
-claimed from this installation.
+checks used named pasteboards and mocked input.
+
+Later that day, two explicitly started probes ran in a new remote Notepad
+document. Each visually inserted its unique NEW marker exactly once. The first
+held NEW for five seconds; the second restored OLD after 686 ms (650 ms requested).
+V-down was posted 61 ms and 55 ms after NEW publication, respectively. Both logs
+recorded original local clipboard restoration. Remote receipt was established
+from the displayed document, not from the helper's key-event log.
+
+Neither trial used a dictation app. Each also involved returning focus from the
+test dialog to Windows App, which may refresh the client's clipboard state.
+These two successful trials do not reproduce or exclude intermittent stale
+remote contents, delayed rendering, or a problem during repeated dictation with
+uninterrupted Windows App focus. No production timing change or stale-paste fix
+is justified by these results alone.

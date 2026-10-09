@@ -167,15 +167,17 @@ final class DictationPasteMonitor {
         }
     }
 
-    /// Prepare outside the decision lock. Only the short, in-memory transaction
-    /// commit runs inside it. An expired decision must never suppress or replay.
+    /// Prepare before resolving the decision. No application/OS work runs under
+    /// its lock. An expired decision must never suppress or replay.
     func handle(_ input: Event, decision: PasteCaptureDecision?) {
         guard let decision else { _ = observe(input); return }
-        guard captureTask == nil else { decision.evaluate { false }; return }
+        guard decision.remaining > 0 else { return }
+        guard captureTask == nil else { decision.resolve(false); return }
         guard pending == nil, filterHealthy, isAvailable(),
               let target = targetPID(), sampledTargetPID == target,
               history.preceding(board.changeCount).last != nil else {
-            decision.evaluate { self.observe(input) }; return
+            _ = observe(input, decision: decision)
+            decision.resolve(false); return
         }
         let revision = board.changeCount, token = generation
         sampleTask?.cancel(); sampleTask = nil
@@ -192,9 +194,10 @@ final class DictationPasteMonitor {
                 guard let baseline else { throw DictationCaptureError.originalUnknown }
                 // Copy/HTML transport preparation also stays outside the lock.
                 let payload = try CapturedClipboard.read(from: board, after: baseline.revision, access: access)
-                if !decision.evaluate({ self.observe(input, preparedRead: { payload }) }) {
+                if !self.observe(input, preparedRead: { payload }, decision: decision) {
                     lastHandledRevision = revision
                 }
+                decision.resolve(false)
                 diagnostic("clipboard.read_ready stage=candidate revision=\(revision) decisionExpired=\(decision.remaining == 0)")
             } catch is CancellationError { }
             catch {
@@ -203,7 +206,7 @@ final class DictationPasteMonitor {
                 // original key has already been allowed through.
                 diagnostic("clipboard.read_failed stage=candidate revision=\(revision) error=\(error) originalInput=allowed")
                 lastHandledRevision = revision; history.clear()
-                decision.evaluate { false }
+                decision.resolve(false)
                 onError(error)
             }
         }
@@ -228,7 +231,8 @@ final class DictationPasteMonitor {
     /// Return true only when the caller must remove this event from the stream.
     /// Native tests use event metadata and a named board, never real input.
     @discardableResult
-    func observe(_ event: Event, preparedRead: (() throws -> CapturedClipboard?)? = nil) -> Bool {
+    func observe(_ event: Event, preparedRead: (() throws -> CapturedClipboard?)? = nil,
+                 decision: PasteCaptureDecision? = nil) -> Bool {
         if event.pid == ProcessInfo.processInfo.processIdentifier { return false }
         var remove = false
         if event.fromDictation, event.pid == suppressedPID, event.key == 9 {
@@ -267,6 +271,7 @@ final class DictationPasteMonitor {
             // posting here. Failure leaves the original paste unmodified.
             if now() - started > 0.1 { throw DictationCaptureError.captureTooSlow }
             let id = UUID()
+            if let decision, !decision.resolve(true) { return false }
             pending = Pending(id: id, payload: payload, candidates: candidates, sourcePID: event.pid,
                 targetPID: target, started: started, clipboardReturn: event.clipboardReturn,
                 inputSequence: event.sequence, lastReportedRevision: payload.revision)

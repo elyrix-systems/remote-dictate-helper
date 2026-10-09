@@ -86,10 +86,9 @@ final class WindowsAppPasteMonitor {
                 return
             }
             DispatchQueue.main.async {
-                decision.evaluate {
-                    guard let self, self.filter != nil else { return false }
-                    return self.observe(event)
-                }
+                guard let self, self.filter != nil else { decision.resolve(false); return }
+                _ = self.observe(event, decision: decision)
+                decision.resolve(false)
             }
         }, onDisabled: { [weak self] in
             DispatchQueue.main.async { self?.filterDisabled() }
@@ -113,13 +112,16 @@ final class WindowsAppPasteMonitor {
 
     /// Component tests feed metadata here; native input goes through the bounded
     /// filter decision above. No late callback may capture after stop/restart.
-    @discardableResult func observe(_ event: PasteInputEvent) -> Bool {
+    @discardableResult func observe(_ event: PasteInputEvent, decision: PasteCaptureDecision? = nil) -> Bool {
         guard filterHealthy, !isBusy, isAvailable(), isTrusted(),
               event.pid != ProcessInfo.processInfo.processIdentifier, event.fromDictation,
               event.kind == .down, event.key == 9, event.command, !event.autorepeat,
               let pid = targetPID(), pid > 0 else { return false }
         let capturedRevision = revision()
         guard lastRevision != capturedRevision else { return false }
+        // All OS queries above run outside the decision lock. If they stalled,
+        // refuse the late capture before changing state or scheduling any input.
+        if let decision, !decision.resolve(true) { return false }
         lastRevision = capturedRevision; isBusy = true
         let id = UUID(), started = ProcessInfo.processInfo.systemUptime
         diagnostic("op=\(id) client=windows stage=captured targetPID=\(pid) revision=\(capturedRevision) \(event.diagnosticMetadata)")

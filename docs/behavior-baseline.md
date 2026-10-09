@@ -194,3 +194,23 @@ provider failures used disposable named boards, never the general clipboard.
 This is a local candidate, not a new GitHub release. A first dictation after sleep
 and prolonged normal use remain to be observed. These checks do not establish a
 fix for intermittent stale RDP contents or exclude independent source-app stalls.
+
+## Local input-filter liveness candidate: 111.1.1
+
+On 2026-10-09, another report of transient Flow/superwhisper hangs led to an
+input-filter audit. The owner reported that the apps had already recovered;
+read-only process samples did not capture the original hang. Source inspection
+found an application lookup on the event-tap thread and a decision lock held
+across admission checks. Either could bypass the intended capture deadline.
+
+The candidate moves source lookup off the tap, bounds outstanding lookups across
+both filters and restarts, and removes caller code from the decision lock. Both
+adapters refuse an expired capture before committing or scheduling input. The
+full regression suite, including injected blocked lookup/admission checks and
+all source contracts, passed. These tests post no real input.
+
+The signed **1.1.1 / build 111.1.1** candidate was installed after normal Quit.
+Its signing requirement matched the previous copy; both active filters started
+without renewed Accessibility permission. Physical dictation and prolonged use
+remain to be checked. This establishes the deadline correction, not the cause of
+an earlier source-app hang or a fix for stale remote Windows clipboard contents.

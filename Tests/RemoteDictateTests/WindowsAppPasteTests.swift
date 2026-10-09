@@ -163,11 +163,13 @@ final class WindowsAppPasteTests {
                     let f = Fixture(sources: [selected])
                     let input = SourceInputHarness(sources: [selected], identifier: source.bundleIdentifier + suffix) {
                         if let sequence = $0.sequence { f.sequence = sequence }
-                        return f.monitor.observe($0)
+                        return f.monitor.observe($0, decision: $1)
                     }
                     for _ in 0..<2 {
-                        expectTrue(try input.paste(down: true), "Every selected source uses the same capture path")
-                        expectTrue(try input.paste(down: false), "Pair each suppressed paste")
+                        let downCaptured = try await input.paste(down: true)
+                        let upCaptured = try await input.paste(down: false)
+                        expectTrue(downCaptured, "Every selected source uses the same capture path")
+                        expectTrue(upCaptured, "Pair each suppressed paste")
                         try await f.wait(); f.revision += 1
                     }
                     expectEqual(f.keys, [55,9,9,55,55,9,9,55])
@@ -181,9 +183,11 @@ final class WindowsAppPasteTests {
                 let f = Fixture(sources: selection)
                 let input = SourceInputHarness(sources: selection, identifier: source.bundleIdentifier) {
                     if let sequence = $0.sequence { f.sequence = sequence }
-                    return f.monitor.observe($0)
+                    return f.monitor.observe($0, decision: $1)
                 }
-                expectFalse(try input.paste(down: true)); expectFalse(try input.paste(down: false))
+                let downCaptured = try await input.paste(down: true)
+                let upCaptured = try await input.paste(down: false)
+                expectFalse(downCaptured); expectFalse(upCaptured)
                 expectTrue(f.events.isEmpty); expectFalse(f.monitor.isBusy)
             }
         }

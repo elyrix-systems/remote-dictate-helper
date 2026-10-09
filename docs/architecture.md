@@ -33,9 +33,13 @@ New dictations are not queued while a transaction is finishing.
 | `LaunchAtLogin` | One-time registration of the installed main app through `SMAppService`; macOS owns subsequent enable/disable choices. |
 | `DictationSourceSettings` | Commit source-list edits immediately after persistence/application succeeds; retain the previous selection on failure. |
 
-The event filter has an 80 ms capture-decision budget. Candidate data is prepared
-asynchronously, with at most 60 ms of that remaining budget for the reader. Only
-the prepared transaction is committed under the decision lock. Late capture
+The event filter has an 80 ms capture-decision budget, including source identity
+lookup. Only synthetic Command+V candidates resolve a source, on a separate queue
+with one outstanding lookup shared across filters and restarts; ordinary input performs no application
+lookup. Candidate data is prepared asynchronously, with at most 60 ms of the
+remaining budget for the reader. No caller code or OS query runs under the
+decision lock. Each adapter must obtain acceptance before committing or replaying
+the prepared transaction. A blocked lookup cannot queue more lookups. Late capture
 passes the original input through and cannot schedule a deferred replay. Accepted V-down
 and V-up are filtered; ordinary Command flag events, manual input, other apps and
 the helper's replay are not removed. A disabled tap reports an error. An input
@@ -159,6 +163,7 @@ changing either client protocol. The normal build leaves it disabled.
 | A complete native modifier sequence fixes the observed Windows App `v` | Physical comparison of Flow/keyboard events and accepted local Flow trial; subsequent owner-confirmed insertion with superwhisper and Valis on 1.1.0 | The tested local Windows App setup; additional RDP endpoints and recording modes are separate integration checks |
 | Reading local text before the native sequence may help a deferred pasteboard provider | Apple's data-provider contract; a separate-process named-pasteboard spike materialized data without changing its revision; isolation/cancellation regression tests | External API + local component proof. Whether this fixes stale RDP data is an unconfirmed integration hypothesis, pending physical trials; local availability is not remote readiness |
 | An active event tap can suppress an event | Apple's Core Graphics callback contract | External API proof only |
+| A blocked identity lookup or admission check cannot hold the input stream beyond the capture budget or commit late | Injected stalls in the real filter and both adapter admission paths; no native events posted | Local component proof. Source-app recovery and normal remote insertion still require physical integration checks; this does not prove the cause of an earlier hang |
 | Filtering the source paste prevents the leaked `v` | Physical trials with Flow, superwhisper and Valis | Tested local Mac and Screen Sharing setup |
 | Source clipboard return can identify the original | Snapshot/revision regression tests and physical clipboard checks | Component + local integration proof |
 | A zero-item original may return as one empty UTF-8 text item | Local Flow/pasteboard metadata after wake and a named-pasteboard reproduction | Observed source behavior; automated capture/replay/restoration proof, pending physical verification of the fix |

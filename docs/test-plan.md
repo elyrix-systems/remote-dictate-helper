@@ -21,6 +21,7 @@ The custom native runner works with Command Line Tools without XCTest.
 | Diagnostics | Explicit build opt-in, no file when disabled, bounded rotation/private files/symlink refusal, no transcript in failure logs, distinct click/key/foreground/clipboard/modifier reasons and unchanged cancellation/key release. Live context sampling and observer overhead require the local diagnostic app. |
 | Diagnostic text opt-in | Two explicit build flags; metadata-only and disabled builds omit text. Isolated named-board UTF-8 capture, escaped Russian/multiline round-trip, size bounds and truncation, unavailable invalid UTF-8, unchanged formats/revisions, source-only capture in both adapters, operation linkage through cancellation, existing-file privacy and symlink refusal. These establish local capture, not remote receipt. |
 | Interception | Manual/local/unknown input passes through; accepted down/up pairing; slow capture and disabled filter fail safely; no deletion. |
+| Input-filter liveness | Blocked source lookup/admission returns within the capture budget, bounds outstanding work across filter restarts and cannot capture late; ordinary/manual/self input skips source lookup; stalled admission in both adapters cannot schedule input or a clipboard read after expiry. No real events posted. |
 | Shared source contract | Real event classification into both client monitors for Flow, superwhisper, Valis and a custom source; main/helper bundle IDs, consecutive captures and both clipboard-return policies. Removed/disabled sources pass through. No running dictation apps required. |
 | Clipboard | Full-format original restoration, UTF-8 HTML transport, empty originals, clipboard ownership, newer/equal-text copies and restoration deadlines. |
 | Input | Exactly one private Command+V; permission/target/modifier refusal; mid-sequence release; HID residue guards and no retry. |
@@ -101,6 +102,13 @@ separately, since isolation does not establish RDP readiness. Read-timeout logs
 must name baseline/candidate/source-return, the revision and failure without text.
 Do not trigger an artificial stall on the general clipboard or force-stop a source
 app to test this. The deliberate hung-provider test uses a disposable named board.
+
+For the input-filter liveness candidate, repeat Flow and superwhisper dictations
+in both clients and check that the source, helper menu and normal keyboard input
+remain responsive. Verify one insertion and the existing source/target clipboard
+restoration behavior. A recovered process sample cannot establish the cause of a
+previous hang. The deadline tests establish local refusal of late work, not remote
+receipt or resolution of the separate stale RDP clipboard issue.
 
 ## Windows App physical checks
 

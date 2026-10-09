@@ -2,7 +2,7 @@ import AppKit
 import RemoteDictateCore
 
 final class InterceptionTests {
-    @MainActor func testAllConfiguredSources() throws {
+    @MainActor func testAllConfiguredSources() async throws {
         let board = NSPasteboard(name: .init("rdh-source-contract-\(UUID())"))
         defer { board.releaseGlobally() }
         for source in SourceInputHarness.sources {
@@ -13,13 +13,15 @@ final class InterceptionTests {
                     let monitor = DictationPasteMonitor(board: board, access: eagerTestClipboardAccess(), targetPID: { 100 }, isAvailable: { true },
                         sources: [selected], onCaptured: { id = $0 }, onError: { fail("\($0)") })
                     let input = SourceInputHarness(sources: [selected], identifier: source.bundleIdentifier + suffix) {
-                        monitor.observe($0)
+                        monitor.observe($0, decision: $1)
                     }
                     for _ in 0..<2 {
                         board.clearContents(); expectTrue(board.setString("original", forType: .string))
                         monitor.sample()
                         board.clearContents(); expectTrue(board.setString("dictation", forType: .string))
-                        expectTrue(try input.paste(down: true)); expectTrue(try input.paste(down: false))
+                        let downCaptured = try await input.paste(down: true)
+                        let upCaptured = try await input.paste(down: false)
+                        expectTrue(downCaptured); expectTrue(upCaptured)
                         let captured = try expectUnwrap(id)
                         if policy == .restoresPrevious {
                             expectNil(try monitor.completeIfReleased(captured))

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.5 — 2026-10-10
+
+- Keep the privacy note and installed version/build on one footer line in
+  Settings, with the version aligned right. Restore the previous window height.
+
+This is a layout-only update; permission handling, paste interception and
+clipboard restoration are unchanged. Downloads remain ad-hoc signed and not
+Apple notarized.
+
 ## 1.1.4 — 2026-10-10
 
 - Pause input interception before Accessibility changes in System Settings to

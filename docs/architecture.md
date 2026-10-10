@@ -34,7 +34,15 @@ New dictations are not queued while a transaction is finishing.
 | `DictationSourceSettings` | Commit source-list edits immediately after persistence/application succeeds; retain the previous selection on failure. |
 
 The event filter has an 80 ms capture-decision budget, including source identity
-lookup. Only synthetic Command+V candidates resolve a source, on a separate queue
+lookup. A RAM-only `PasteTargetScope` gate, updated by workspace activation and
+sleep/session notifications, refuses candidates outside the adapter's client
+before identity lookup or main-queue admission. This cache only permits further
+checks; the actual foreground/window guards still decide capture and replay.
+Delayed/missed activation can pass original input through, never authorize a
+paste into a different target. Screen Sharing baseline sampling is suspended
+outside its client and starts fresh on return.
+
+Only synthetic Command+V candidates in an active scope resolve a source, on a separate queue
 with one outstanding lookup shared across filters and restarts; ordinary input performs no application
 lookup. Candidate data is prepared asynchronously, with at most 60 ms of the
 remaining budget for the reader. No caller code or OS query runs under the
@@ -44,7 +52,20 @@ passes the original input through and cannot schedule a deferred replay. Accepte
 and V-up are filtered; ordinary Command flag events, manual input, other apps and
 the helper's replay are not removed. A disabled tap reports an error. An input
 sequence counter prevents delayed main-thread callbacks from hiding a new click
-or key press before replay.
+or key press before replay. Ordinary keys/clicks update that counter directly and
+enqueue no observer task; only an accepted V-up is delivered asynchronously.
+`PasteAdmissionQueue` permits one waiting admission across both adapters and
+restarts. An expired request keeps its slot until the main queue drains it, so
+an indefinitely stalled main queue cannot collect expired capture callbacks.
+Monitor epochs reject callbacks from a stopped filter.
+
+Readiness gate: workspace activation notifications are Apple's external API
+contract ([reference](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)).
+Local component checks exercise cached refusal, foreground/sleep/wake/stop/restart,
+timer suspension, 60,000 ordinary input events, 1,000 local pastes and 20,000
+expired admissions without posting native input. Actual notification ordering,
+return-before-finishing dictation and prolonged source-app liveness still need
+local integration evidence. See the [investigation record](experiments/local-input-liveness-2026-10-09.md).
 
 For `restoresPrevious` sources, V-up and a new clipboard revision matching a saved
 original establish release. Unknown values stop replay; the five-second limit is

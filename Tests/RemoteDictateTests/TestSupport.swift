@@ -33,6 +33,13 @@ struct TestRunner {
         try await testAsyncCaptureAndExpiredDecision()
         if CommandLine.arguments.contains("--isolation-only") { return }
         testCaptureDecisionDeadline()
+        try testLocalInputDoesNotQueueWork()
+        try testTargetGateKeepsAcceptedRelease()
+        testAdmissionQueueBound()
+        testTargetScopeLifecycle()
+        try await testInactiveSamplingSuspends()
+        testMainQueueWatchdog()
+        try await testNativeWatchdogTimer()
         try await testPasteFilterLiveness()
         try await testBlockedAdmissionLiveness()
         try await testLateAdmissionCannotReplay()

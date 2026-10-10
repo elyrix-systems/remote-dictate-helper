@@ -41,6 +41,17 @@ progress; the app accepts only one transfer at a time.
   `clipboard-read-ready`, the captured revision, chosen format, byte count and
   read duration. Failure stops before the native sequence. These records establish
   only local data availability, not that RDP received the current clipboard.
+- `filter.scope` records whether each client's early admission gate is active.
+  Local input creates no identity lookup/admission; the Screen Sharing baseline
+  timer is suspended outside that client.
+- `liveness.heartbeat` confirms the main queue answered an independent ping.
+  `liveness.main_queue_delayed` is written from a separate timer while the main
+  queue is delayed for at least two seconds; `main_queue_recovered` records its
+  eventual response. Correlate sleep/wake and operation stages before inferring
+  a hang. There is at most one pending ping; slow reports are limited to once
+  per ten seconds, healthy reports to once per thirty seconds. The diagnostic
+  cannot accumulate pings on an unresponsive main queue or prove which external
+  process caused a delay.
 
 The observer logs workspace activation, sleep/wake, session activity and observed
 screen lock/unlock notifications. While a supported remote client is foreground,

@@ -52,6 +52,7 @@ final class PasteEventFilter: @unchecked Sendable {
     private let onDisabled: @Sendable () -> Void
     private let trackPhysicalModifiers: Bool
     private let sourceIdentifier: @Sendable (pid_t) -> String?
+    private let targetIsActive: @Sendable () -> Bool
     // Shared across both client filters and stop/start cycles. Even an OS call
     // that never returns cannot accumulate lookup workers as filters restart.
     private static let sourceQueue = DispatchQueue(label: "systems.elyrix.RemoteDictateHelper.source-identity")
@@ -72,12 +73,14 @@ final class PasteEventFilter: @unchecked Sendable {
 
     init(sources: [DictationSource], onEvent: @escaping @Sendable (PasteInputEvent, PasteCaptureDecision?) -> Void,
          onDisabled: @escaping @Sendable () -> Void, trackPhysicalModifiers: Bool = false,
+         targetIsActive: @escaping @Sendable () -> Bool = { true },
          sourceIdentifier: @escaping @Sendable (pid_t) -> String? = {
              NSRunningApplication(processIdentifier: $0)?.bundleIdentifier
          }) {
         self.sources = sources; self.onEvent = onEvent; self.onDisabled = onDisabled
         self.trackPhysicalModifiers = trackPhysicalModifiers
         self.sourceIdentifier = sourceIdentifier
+        self.targetIsActive = targetIsActive
     }
     func start() -> Bool {
         let worker = Thread { [self] in run() }
@@ -160,7 +163,12 @@ final class PasteEventFilter: @unchecked Sendable {
         }
         if paired && input.kind == .up { suppressedPID = nil; suppressedSource = nil }
         lock.unlock()
-        if paired { onEvent(input, nil); return true }
+        if paired {
+            // Only the accepted release needs an observer callback. Repeated
+            // downs are suppressed without creating more main-actor work.
+            if input.kind == .up { onEvent(input, nil) }
+            return true
+        }
         lock.lock()
         if input.kind == .down || input.kind == .mouse { sequence &+= 1 }
         input.sequence = sequence
@@ -169,8 +177,11 @@ final class PasteEventFilter: @unchecked Sendable {
         }
         lock.unlock()
         guard pid > 0, input.kind == .down, input.key == 9, input.command, !input.autorepeat else {
-            onEvent(input, nil); return false
+            // The synchronous sequence counter is sufficient for cancellation.
+            // Do not enqueue a task for every ordinary key/click on the Mac.
+            return false
         }
+        guard targetIsActive() else { return false }
         let decision = PasteCaptureDecision()
         let decisionStarted = ProcessInfo.processInfo.systemUptime
         // Launch Services may block. Resolve only candidate pastes off the tap,
@@ -178,13 +189,13 @@ final class PasteEventFilter: @unchecked Sendable {
         // even if the external service never replies. Ordinary input does no IPC.
         guard Self.sourceSlot.wait(timeout: .now()) == .success else {
             DiagnosticLog.shared.record("filter.source_lookup_busy physicalModifiers=\(trackPhysicalModifiers) originalInput=allowed \(input.diagnosticMetadata)")
-            onEvent(input, nil); return false
+            return false
         }
         let candidate = input
         Self.sourceQueue.async { [self] in
             let identifier: String? = {
                 defer { Self.sourceSlot.signal() }
-                guard decision.remaining > 0 else { return nil }
+                guard decision.remaining > 0, targetIsActive() else { return nil }
                 return sourceIdentifier(pid)
             }()
             // Release the lookup slot before dispatching admission. Otherwise a
@@ -192,7 +203,7 @@ final class PasteEventFilter: @unchecked Sendable {
             // skip the same event while this worker was still releasing its slot.
             guard decision.remaining > 0 else { return }
             guard let source = sources.first(where: { $0.matches(identifier) }) else {
-                onEvent(candidate, nil); decision.resolve(false); return
+                decision.resolve(false); return
             }
             let classified = PasteInputEvent(kind: candidate.kind, key: candidate.key,
                 command: candidate.command, pid: pid, fromDictation: true,
@@ -200,7 +211,7 @@ final class PasteEventFilter: @unchecked Sendable {
                 sequence: candidate.sequence, sourceBundle: identifier,
                 flags: candidate.flags, eventUptime: candidate.eventUptime)
             lock.lock(); let inactive = stopped; resolvedSource = inactive ? nil : classified; lock.unlock()
-            guard !inactive else { decision.resolve(false); return }
+            guard !inactive, targetIsActive() else { decision.resolve(false); return }
             onEvent(classified, decision)
         }
         let accepted = decision.wait()

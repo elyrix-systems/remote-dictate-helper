@@ -20,6 +20,8 @@ runtime="$repo_root/Sources/RemoteDictateHelper"
 swiftc -swift-version 6 -parse-as-library -I "$test_module_dir" \
   Tests/RemoteDictateTests/*.swift \
   "$runtime/PasteEventFilter.swift" "$runtime/DictationPasteMonitor.swift" "$runtime/ClipboardBaselineHistory.swift" \
+  "$runtime/PasteTargetScope.swift" \
+  "$runtime/MainQueueWatchdog.swift" \
   "$runtime/IsolatedClipboardReader.swift" \
   "$runtime/CapturedClipboard.swift" "$runtime/LocalClipboardRestoration.swift" \
   "$runtime/DeferredClipboardCompletion.swift" "$runtime/AccessibilityPermission.swift" \

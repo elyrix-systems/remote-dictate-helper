@@ -39,6 +39,7 @@ final class WindowsAppPasteMonitor {
     private let diagnostic: (String) -> Void
     private let textLog: DiagnosticLog
     private var filter: PasteEventFilter?
+    private let targetScope = PasteTargetScope(bundleIdentifier: WindowsAppPasteMonitor.bundleIdentifier)
     private var filterHealthy = true
     private var task: Task<Void, Never>?
     private var releaseKeys: (() -> Void)?
@@ -83,6 +84,7 @@ final class WindowsAppPasteMonitor {
     func start() throws {
         guard isTrusted() else { throw WindowsAppPasteError.unavailable }
         filterHealthy = true
+        let token = generation
         let next = PasteEventFilter(sources: sources, onEvent: { [weak self] event, decision in
             guard let decision else {
                 if event.fromDictation, event.kind == .up, event.key == 9, DiagnosticLog.shared.enabled {
@@ -90,16 +92,21 @@ final class WindowsAppPasteMonitor {
                 }
                 return
             }
-            DispatchQueue.main.async {
-                guard let self, self.filter != nil else { decision.resolve(false); return }
+            PasteAdmissionQueue.shared.submit(decision) {
+                guard let self, self.filter != nil, self.generation == token else { decision.resolve(false); return }
                 _ = self.observe(event, decision: decision)
                 decision.resolve(false)
             }
         }, onDisabled: { [weak self] in
-            DispatchQueue.main.async { self?.filterDisabled() }
-        }, trackPhysicalModifiers: true)
+            DispatchQueue.main.async {
+                guard let self, self.generation == token else { return }
+                self.filterDisabled()
+            }
+        }, trackPhysicalModifiers: true,
+           targetIsActive: { [gate = targetScope.gate] in gate.isActive })
         guard next.start() else { throw WindowsAppPasteError.unavailable }
         filter = next
+        targetScope.start()
         report("Windows App paste filter installed; no clipboard writes or Backspace")
     }
 
@@ -107,6 +114,7 @@ final class WindowsAppPasteMonitor {
         generation += 1; filterHealthy = false
         task?.cancel(); releaseKeys?(); releaseKeys = nil; task = nil; isBusy = false
         filter?.stop(); filter = nil
+        targetScope.stop()
     }
 
     func filterDisabled() {

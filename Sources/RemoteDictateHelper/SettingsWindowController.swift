@@ -26,6 +26,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var timer: Timer?
     private var previousTrust = false
     private var inputReady = false
+    private var permissionRequest: Task<Void, Never>?
 
     init(settings: AppSettings, launchAtLogin: LaunchAtLogin, onSave: @escaping (AppSettings) throws -> Void,
          beforeOpeningSystemSettings: @escaping () -> Void,
@@ -125,11 +126,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func refreshPermission() {
         loginStatus.stringValue = launchAtLogin.statusDescription
         loginStatus.textColor = launchAtLogin.isEnabled ? .systemGreen : .secondaryLabelColor
-        let trusted = AccessibilityPermission.isTrusted()
+        let access = AccessibilityPermission.state
+        let trusted = access == .granted
         if trusted && (!previousTrust || !inputReady) { inputReady = onPermissionGranted() }
         if !trusted { inputReady = false }
         previousTrust = trusted
-        permissionStatus.stringValue = trusted ? (inputReady ? "Allowed ✓" : "Reopen the helper") : "Not granted"
+        switch access {
+        case .checking: permissionStatus.stringValue = "Checking…"
+        case .unavailable: permissionStatus.stringValue = "Unable to check access"
+        case .granted: permissionStatus.stringValue = inputReady ? "Allowed ✓" : "Preparing input…"
+        case .denied, .notRequested: permissionStatus.stringValue = "Not granted"
+        }
         permissionStatus.textColor = trusted && inputReady ? .systemGreen : .secondaryLabelColor
         if !UserDefaults.standard.bool(forKey: Self.completionKey),
            SettingsReadiness(installed: installed, accessibility: trusted, inputReady: inputReady,
@@ -138,10 +145,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
     @objc private func requestPermission() {
-        guard installed else { return }
+        guard installed, permissionRequest == nil else { return }
         beforeOpeningSystemSettings()
-        AccessibilityPermission.openSettings()
-        refreshPermission()
+        permissionButton.isEnabled = false
+        permissionRequest = Task { [weak self] in
+            await AccessibilityPermission.openSettings()
+            guard let self else { return }
+            self.permissionRequest = nil; self.permissionButton.isEnabled = true
+            self.refreshPermission()
+        }
     }
     @objc private func openLoginItems() {
         beforeOpeningSystemSettings()

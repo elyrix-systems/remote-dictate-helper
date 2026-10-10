@@ -25,6 +25,7 @@ The custom native runner works with Command Line Tools without XCTest.
 | Local-input isolation | 60,000 ordinary events enqueue no callback while preserving cancellation counters; 1,000 local synthetic pastes bypass identity/admission; accepted V-up remains paired after focus loss. 20,000 expired admissions retain one queued block and recover. Workspace scope start/stop/sleep/wake, baseline timer suspension and a bounded independent main-queue heartbeat use fake notifications/queues and a named board. |
 | Permission revocation | Timeout/user-disabled callbacks synchronously invalidate an owned Mach port and source before notification. Duplicate callbacks, matched key-up and new keyboard/mouse events pass after retirement; injected trust loss withdraws pending acceptance. Late creation disconnects immediately. Screen Sharing sampling stops and reports once. No global input tap or TCC change. |
 | Permission pane protection | Synchronous stop before opening System Settings, external foreground entry, no hidden/startup rearming, no rearming during launch polling, missing-grant error and trusted-only resume. Ordinary foreground changes do not recreate monitoring. Mocked workspace and permissions only. |
+| Live permission status | Granted/denied/absent HID states, snapshot expiry, no blocking OS check on the main actor, one outstanding check under 20,000 refresh requests, timeout and obsolete-grant refusal. Deleted versus disabled entry navigation uses injected effects; no real TCC requests. |
 | Shared source contract | Real event classification into both client monitors for Flow, superwhisper, Valis and a custom source; main/helper bundle IDs, consecutive captures and both clipboard-return policies. Removed/disabled sources pass through. No running dictation apps required. |
 | Clipboard | Full-format original restoration, UTF-8 HTML transport, empty originals, clipboard ownership, newer/equal-text copies and restoration deadlines. |
 | Input | Exactly one private Command+V; permission/target/modifier refusal; mid-sequence release; HID residue guards and no retry. |
@@ -139,6 +140,14 @@ ordinary copy/paste before a dictation. A mid-transfer test must also verify loc
 clipboard restoration and the original Screen Sharing connection's sharing state.
 Do not revoke the user's permission unattended, reset TCC, or infer this physical
 result from the automated disposable-port tests.
+
+While testing removal, also keep the helper Settings visible and confirm it
+changes from Allowed to Not granted. A deleted entry must be requested again by
+the Accessibility button; use the native alert's Open System Settings action and
+expect only one navigation. A disabled but existing entry should open the pane
+directly. Returning after granting must show Allowed and create two fresh taps.
+Neither a delayed check nor a previous cached grant may show Allowed or resume
+input while the current permission is unknown.
 
 ## Windows App physical checks
 

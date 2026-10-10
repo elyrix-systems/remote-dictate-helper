@@ -10,6 +10,7 @@ final class PermissionMonitoringGuard {
     private let center: NotificationCenter
     private let front: () -> String?
     private let trusted: () -> Bool
+    private let invalidatePermission: () -> Void
     private let onChange: (State) -> Void
     private var observers: [NSObjectProtocol] = []
     private var timer: Timer?
@@ -20,8 +21,10 @@ final class PermissionMonitoringGuard {
     init(center: NotificationCenter = NSWorkspace.shared.notificationCenter,
          front: @escaping () -> String? = { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
          trusted: @escaping () -> Bool = { AccessibilityPermission.isTrusted() },
+         invalidatePermission: @escaping () -> Void = { AccessibilityPermission.invalidate() },
          onChange: @escaping (State) -> Void) {
         self.center = center; self.front = front; self.trusted = trusted; self.onChange = onChange
+        self.invalidatePermission = invalidatePermission
     }
 
     // Recheck foreground at every creation entry point. A hidden helper Settings
@@ -40,7 +43,10 @@ final class PermissionMonitoringGuard {
                     guard let self else { return }
                     if launching {
                         if identifier == Self.settingsBundle { self.prepareToOpenSettings() }
-                    } else { self.awaitingSettings = false; self.refresh() }
+                    } else {
+                        if self.state == .systemSettings || self.awaitingSettings { self.invalidatePermission() }
+                        self.awaitingSettings = false; self.refresh()
+                    }
                 }
             })
         }
@@ -70,6 +76,7 @@ final class PermissionMonitoringGuard {
         guard running else { return }
         awaitingSettings = true
         update(.systemSettings)
+        invalidatePermission()
     }
 
     func refresh() {
@@ -78,7 +85,7 @@ final class PermissionMonitoringGuard {
         let inSettings = front() == Self.settingsBundle
         if inSettings { awaitingSettings = false }
         if inSettings || awaitingSettings {
-            if state == .allowed || state == nil { update(.systemSettings) }
+            if state == .allowed || state == nil { update(.systemSettings); invalidatePermission() }
             update(trusted() ? .systemSettings : .permissionMissing)
         } else {
             update(trusted() ? .allowed : .permissionMissing)

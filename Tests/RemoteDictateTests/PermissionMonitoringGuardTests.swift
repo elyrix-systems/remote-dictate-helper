@@ -3,9 +3,12 @@ import AppKit
 @MainActor func testPermissionSettingsGuard() {
     let center = NotificationCenter()
     var front: String? = "example.remote", trusted = true
-    var filters = 0, creations = 0, stopped = 0
+    var filters = 0, creations = 0, stopped = 0, invalidations = 0
     var states: [PermissionMonitoringGuard.State] = []
-    let guardrail = PermissionMonitoringGuard(center: center, front: { front }, trusted: { trusted }) { state in
+    let guardrail = PermissionMonitoringGuard(center: center, front: { front }, trusted: { trusted }, invalidatePermission: {
+        expectEqual(filters, 0, "Native teardown must precede permission refresh")
+        invalidations += 1
+    }) { state in
         states.append(state)
         if state == .allowed { filters = 2; creations += 1 }
         else { filters = 0; stopped += 1 }
@@ -25,6 +28,7 @@ import AppKit
     expectEqual(states.last, .systemSettings)
     for _ in 0..<1_000 { guardrail.refresh(); expectFalse(guardrail.mayInstallFilters) }
     expectEqual(creations, 1); expectEqual(stopped, 1)
+    expectEqual(invalidations, 1, "Paused polling must not repeatedly invalidate the live result")
     trusted = false; guardrail.refresh()
     expectEqual(states.last, .permissionMissing); expectEqual(filters, 0)
     activate("example.remote")
@@ -37,9 +41,11 @@ import AppKit
     expectEqual(states.last, .systemSettings); expectEqual(filters, 0)
     activate("example.remote")
     expectTrue(guardrail.mayInstallFilters); expectEqual(filters, 2); expectEqual(creations, 2)
+    let beforeLocal = invalidations
     // Ordinary local/remote activation must not churn taps or interrupt dictation.
     activate("example.local"); activate("example.remote")
     expectEqual(creations, 2)
+    expectEqual(invalidations, beforeLocal, "Ordinary focus changes must not interrupt permission checks")
 
     // Our own button disconnects synchronously before opening the pane. Polling
     // during its launch cannot accidentally recreate input taps.

@@ -103,6 +103,27 @@ Settings before another coordinated revocation test. Revocation outside that UI,
 for example by device management while a remote window stays active, is not
 covered by the pre-entry guard. Do not claim it is universally freeze-proof.
 
+Permission consumers read a short-lived RAM snapshot from
+`AccessibilityAccessMonitor`. One utility queue calls
+`IOHIDCheckAccess(kIOHIDRequestTypePostEvent)` every 500 ms; no OS permission IPC
+runs on an input callback or the main actor. Checks cannot accumulate behind a
+blocked call. A snapshot expires after two seconds, and entering/leaving the
+permission pane invalidates earlier generations before monitoring can resume.
+Checking, unavailable, denied and absent permissions never authorize input.
+Settings distinguishes a disabled entry (open the pane) from a deleted entry
+(explicit `IOHIDRequestAccess` on a separate queue). Only the user's button can
+request access, and the native request owns navigation when it displays an alert.
+
+Readiness gate: AX/CG preflight permission queries were assumed to reflect a
+deleted grant. The owner's 113.1.2 trial disproved this for our old UI. A
+[Chromium investigation](https://chromium.googlesource.com/chromium/src/+/7474294381a3b199f2ecc66ed892c1e48ee1f970)
+independently documents stale AX/CG results and live HID states. The installed
+Apple SDK exposes the HID APIs publicly, and a read-only local spike compiled
+and returned a denied state for the command-line identity. Injected tests prove
+bounded checks, expiry, invalidation and navigation choices. Those tests do not
+prove that this app's deleted row is recreated: that needs a signed local UI
+trial, followed by an ordinary clipboard and dictation check.
+
 Readiness gate: workspace activation notifications are Apple's external API
 contract ([reference](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)).
 Local component checks exercise cached refusal, foreground/sleep/wake/stop/restart,

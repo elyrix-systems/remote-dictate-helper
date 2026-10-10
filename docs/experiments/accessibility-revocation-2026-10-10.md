@@ -107,3 +107,25 @@ non-Settings foreground check. No permission changes or keystrokes were made by
 the diagnostic. These results establish proactive removal in the actual native
 tap table. They do not yet establish successful permission revocation or
 post-regrant dictation on this candidate.
+
+## Owner's revocation trial of 113.1.2
+
+The owner subsequently tried multiple permission-removal scenarios and reported
+that physical input remained responsive. This is local evidence for proactive
+tap removal, limited to the reported scenarios. Two UI defects remained: deleting
+the entire permission row left Settings showing Allowed, and its button did not
+request a new row. Native tap creation also failed while the earlier AX check
+still reported trust. This is not evidence of a signature change.
+
+The next candidate replaces the cached AX query with a bounded asynchronous HID
+check. A deleted row and a disabled row have separate navigation paths; the
+explicit request uses Apple's HID access API. Expired or invalidated results
+fail closed. Tests exercise stalled IPC with an injected checker, not the user's
+privacy settings. See the architecture readiness gate for external evidence and
+the remaining signed-installation test.
+
+The signed **1.1.3 / build 113.1.3** candidate was installed after normal Quit,
+with the same designated signing requirement. The full regression suite and
+privacy scan passed. Its first live HID check reported granted; native inventory
+showed exactly two taps. Opening System Settings removed both and the inventory
+reported zero. The deleted-entry status/request/regrant trial remains pending.

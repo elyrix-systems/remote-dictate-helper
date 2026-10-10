@@ -72,9 +72,15 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
         appendLog("app launched version=\(version)")
         let loginNeedsAttention = launchAtLogin.registerOnFirstLaunch()
-        if loginNeedsAttention || SettingsReadiness.shouldOpenOnLaunch(completed: UserDefaults.standard.bool(forKey: SettingsWindowController.completionKey),
-                                               accessibility: AccessibilityPermission.isTrusted()) {
-            openSettings()
+        Task { [weak self] in
+            // Do not interpret the initial asynchronous check as a missing grant
+            // and open Settings on every otherwise configured launch.
+            let access = await AccessibilityAccessMonitor.shared.refreshedState()
+            guard let self, !self.quitAfterClipboardRestore else { return }
+            if loginNeedsAttention || SettingsReadiness.shouldOpenOnLaunch(completed: UserDefaults.standard.bool(forKey: SettingsWindowController.completionKey),
+                                                   accessibility: access == .granted) {
+                self.openSettings()
+            }
         }
     }
     func applicationWillTerminate(_ notification: Notification) {

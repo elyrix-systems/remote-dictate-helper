@@ -5,7 +5,12 @@
 - Immediately disconnect input taps when macOS disables them or Accessibility
   is revoked. Cancel pending capture, stop both client monitors and show a
   persistent permission/interception error instead of leaving a disabled tap
-  installed. Keep permission polling off the input and UI threads.
+  installed. Keep active-tap permission polling off the input and UI threads.
+- Suspend input monitoring before opening Accessibility settings and whenever
+  System Settings becomes active. Do not recreate taps behind the permission
+  pane; resume after leaving only if access is still granted. The earlier
+  teardown-only candidate did not prevent a system-wide freeze in a local
+  revocation test; this additional precaution requires local verification.
 
 ## 1.1.3 — 2026-10-10
 

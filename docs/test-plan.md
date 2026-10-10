@@ -24,6 +24,7 @@ The custom native runner works with Command Line Tools without XCTest.
 | Input-filter liveness | Blocked source lookup/admission returns within the capture budget, bounds outstanding work across filter restarts and cannot capture late; ordinary/manual/self input skips source lookup; stalled admission in both adapters cannot schedule input or a clipboard read after expiry. No real events posted. |
 | Local-input isolation | 60,000 ordinary events enqueue no callback while preserving cancellation counters; 1,000 local synthetic pastes bypass identity/admission; accepted V-up remains paired after focus loss. 20,000 expired admissions retain one queued block and recover. Workspace scope start/stop/sleep/wake, baseline timer suspension and a bounded independent main-queue heartbeat use fake notifications/queues and a named board. |
 | Permission revocation | Timeout/user-disabled callbacks synchronously invalidate an owned Mach port and source before notification. Duplicate callbacks, matched key-up and new keyboard/mouse events pass after retirement; injected trust loss withdraws pending acceptance. Late creation disconnects immediately. Screen Sharing sampling stops and reports once. No global input tap or TCC change. |
+| Permission pane protection | Synchronous stop before opening System Settings, external foreground entry, no hidden/startup rearming, no rearming during launch polling, missing-grant error and trusted-only resume. Ordinary foreground changes do not recreate monitoring. Mocked workspace and permissions only. |
 | Shared source contract | Real event classification into both client monitors for Flow, superwhisper, Valis and a custom source; main/helper bundle IDs, consecutive captures and both clipboard-return policies. Removed/disabled sources pass through. No running dictation apps required. |
 | Clipboard | Full-format original restoration, UTF-8 HTML transport, empty originals, clipboard ownership, newer/equal-text copies and restoration deadlines. |
 | Input | Exactly one private Command+V; permission/target/modifier refusal; mid-sequence release; HID residue guards and no retry. |
@@ -123,8 +124,14 @@ the source/helper when practical. Heartbeat delay alone is not a root-cause proo
 
 ## Accessibility revocation integration check
 
+First enter System Settings without changing a grant and use the read-only
+`CGGetEventTapList` API to verify that the helper owns zero taps. Returning with
+the grant intact must create exactly two, with no accumulation over repetitions.
+Starting the helper with System Settings already frontmost must create none.
+Do not proceed to revocation if taps remain installed.
+
 On an explicitly coordinated local test with recovery access available, revoke
-the running helper's Accessibility grant. Ordinary mouse and keyboard input must
+the running helper's Accessibility grant from that paused state. Ordinary mouse and keyboard input must
 remain responsive, both filters must stop, and the menu must retain an error
 directing the user to Settings. Check both removing the entry and turning it off.
 Regrant access and reopen helper Settings; require fresh filters and a successful

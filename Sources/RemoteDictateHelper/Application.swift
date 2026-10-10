@@ -16,6 +16,10 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     private var settingsWindowController: SettingsWindowController?
     private var lastError: String?
     private var inputMonitoringError: String?
+    private var inputMonitoringPause: String?
+    private lazy var permissionGuard = PermissionMonitoringGuard { [weak self] state in
+        self?.permissionStateChanged(state)
+    }
     private var clipboardSession: LocalClipboardRestoration.Session?
     private var sharedClipboardLease: SharedClipboardTransferLease?
     private var sharedClipboardDriver: ScreenSharingClipboardMenu?
@@ -29,7 +33,9 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         runningTask != nil || sharedClipboardLease != nil || clipboardRestoration.hasPendingRestore || clipboardSession != nil
             || windowsMonitor?.isBusy == true
     }
-    private var canAcceptPaste: Bool { inputMonitoringError == nil && !quitAfterClipboardRestore && !busy }
+    private var canAcceptPaste: Bool {
+        inputMonitoringError == nil && inputMonitoringPause == nil && !quitAfterClipboardRestore && !busy
+    }
     private lazy var clipboardRestoration = LocalClipboardRestoration(onOutcome: { [weak self] outcome, receipt in
         guard let self else { return }
         self.appendLog("local clipboard restore outcome=\(outcome.rawValue)")
@@ -62,7 +68,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         configureMenu()
         diagnosticContext.start()
         setStatus(lastError == nil ? "Idle" : "Error: settings unavailable")
-        configureMonitor()
+        permissionGuard.start()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
         appendLog("app launched version=\(version)")
         let loginNeedsAttention = launchAtLogin.registerOnFirstLaunch()
@@ -72,10 +78,12 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         }
     }
     func applicationWillTerminate(_ notification: Notification) {
+        permissionGuard.stop()
         runningTask?.cancel(); monitor?.stop(); windowsMonitor?.stop()
         diagnosticContext.stop(); DiagnosticLog.shared.flush()
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        permissionGuard.stop()
         cancelCurrentOperation()
         monitor?.stop(); monitor = nil
         guard clipboardRestoration.hasPendingRestore || sharedClipboardLease != nil else { return .terminateNow }
@@ -127,6 +135,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         monitor?.stop(); monitor = nil
         windowsMonitor?.stop(); windowsMonitor = nil
         guard !quitAfterClipboardRestore else { return }
+        guard permissionGuard.mayInstallFilters else { return }
         guard AccessibilityPermission.isTrusted() else { stopInputMonitoring(); return }
         inputMonitoringError = nil
         let next = DictationPasteMonitor(targetPID: {
@@ -173,7 +182,23 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         lastError = inputMonitoringError
         cancelCurrentOperation()
         setStatus(inputMonitoringError!)
-        appendLog("input monitoring stopped; both filters removed; check Accessibility")
+        appendLog("input monitoring stopped; native teardown requested for both filters; check Accessibility")
+    }
+    private func permissionStateChanged(_ state: PermissionMonitoringGuard.State) {
+        switch state {
+        case .systemSettings:
+            inputMonitoringPause = "Paused while System Settings is active"
+            cancelCurrentOperation()
+            setStatus(inputMonitoringPause!)
+            appendLog("input monitoring paused before permission changes; native teardown requested for both filters")
+        case .permissionMissing:
+            inputMonitoringPause = nil
+            stopInputMonitoring()
+        case .allowed:
+            inputMonitoringPause = nil
+            configureMonitor()
+            if monitor != nil && windowsMonitor != nil { setStatus("Ready") }
+        }
     }
     private func startPaste(_ id: UUID, monitor: DictationPasteMonitor) {
         guard canAcceptPaste else { monitor.discard(id); return }
@@ -259,8 +284,9 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController(settings: settings, launchAtLogin: launchAtLogin,
                 onSave: { [weak self] in try self?.saveSettings($0) },
+                beforeOpeningSystemSettings: { [weak self] in self?.permissionGuard.prepareToOpenSettings() },
                 onPermissionGranted: { [weak self] in
-                    guard let self, !self.busy else { return false }
+                    guard let self, !self.busy, self.permissionGuard.mayInstallFilters else { return false }
                     // A revoked grant can leave an existing event tap unusable.
                     // Recreate it when Settings observes a grant, as first use did.
                     self.lastError = nil; self.configureMonitor()
@@ -287,7 +313,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     private func setStatus(_ message: String) {
         // Late cancellation/clipboard cleanup must not overwrite this error
         // with Idle or Done. Settings recreates filters after a verified grant.
-        let message = inputMonitoringError ?? message
+        let message = inputMonitoringError ?? inputMonitoringPause ?? message
         statusMenuItem.title = message.count > 80 ? String(message.prefix(77)) + "…" : message
         let attention: Bool
         if inputMonitoringError != nil || sharingCompletion.hasPendingCompletion { attention = true }

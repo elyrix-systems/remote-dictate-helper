@@ -58,3 +58,49 @@ installed candidate. Settings showed `Allowed`, and physical keyboard/mouse
 input remained responsive. At 10:34:19 UTC both client filters were installed
 successfully. This confirms recovery from an initially untrusted installation;
 it does not yet test revoking access while the candidate's filters are active.
+
+## First physical revocation test failed
+
+The owner removed the permission with **113.1.1** running and SSH recovery
+available. Keyboard/mouse input froze again. At 11:38:16 UTC the Windows tap
+reported timeout retirement, followed by the application's cleanup of both
+monitors. A main-queue heartbeat at 11:38:20 UTC still completed without delay.
+The process was no longer running when the report was inspected; no frozen
+process sample or native tap inventory was captured. The user-visible failure
+invalidates any inference that those successful teardown calls alone restore
+system input. No additional permission removal was performed automatically.
+
+A separate developer reported the same system-wide symptom with a minimal
+pass-through tap in [Apple's developer forum](https://developer.apple.com/forums/thread/844416).
+Apple DTS asked for a system diagnostic; the thread does not establish the exact
+cause on this Mac or supply a verified workaround.
+
+The next candidate adds proactive suspension before the helper opens System
+Settings and on external System Settings activation. Startup and reconfiguration
+cannot create taps while guarded. Leaving checks trust before resuming; ordinary
+local/remote focus changes retain the established paste path. Background status
+polling cannot rearm during pane launch. Native diagnostics now distinguish port
+invalidation from worker completion instead of claiming physical input delivery.
+
+Automated checks cover those transitions without changing TCC or posting input.
+The next native check is deliberately non-destructive: enumerate the helper's
+taps before and during System Settings and require zero while paused. Actual
+revocation remains unverified for this follow-up. Revocation without entering
+System Settings is outside the pre-entry safeguard.
+
+## Non-destructive native check of 113.1.2
+
+The signed **1.1.3 / build 113.1.2** candidate was installed with the same local
+designated signing requirement. The complete regression suite and privacy scan
+passed. Access was available, and `CGGetEventTapList` initially reported exactly
+two enabled taps owned by the helper. Activating System Settings removed both;
+the query reported zero owned taps, and worker logs reported invalid ports and
+sources followed by loop completion.
+
+Three further local-application/System Settings round trips each reported
+**two → zero** owned taps, with no accumulation. The first local foreground
+snapshot was a different local app than requested, so it is counted only as a
+non-Settings foreground check. No permission changes or keystrokes were made by
+the diagnostic. These results establish proactive removal in the actual native
+tap table. They do not yet establish successful permission revocation or
+post-regrant dictation on this candidate.

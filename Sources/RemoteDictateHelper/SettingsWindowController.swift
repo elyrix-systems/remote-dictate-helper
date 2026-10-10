@@ -11,6 +11,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
     private let sourceSettings: DictationSourceSettings
     private let onPermissionGranted: () -> Bool
+    private let beforeOpeningSystemSettings: () -> Void
     private let launchAtLogin: LaunchAtLogin
     private let loginStatus = NSTextField(labelWithString: "")
     private lazy var sourcesView = DictationSourcesView(sources: settings.sources, onChange: { [weak self] sources in
@@ -27,9 +28,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var inputReady = false
 
     init(settings: AppSettings, launchAtLogin: LaunchAtLogin, onSave: @escaping (AppSettings) throws -> Void,
+         beforeOpeningSystemSettings: @escaping () -> Void,
          onPermissionGranted: @escaping () -> Bool) {
         self.sourceSettings = DictationSourceSettings(value: settings, persist: onSave)
         self.onPermissionGranted = onPermissionGranted
+        self.beforeOpeningSystemSettings = beforeOpeningSystemSettings
         self.launchAtLogin = launchAtLogin
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 450),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -123,7 +126,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         loginStatus.stringValue = launchAtLogin.statusDescription
         loginStatus.textColor = launchAtLogin.isEnabled ? .systemGreen : .secondaryLabelColor
         let trusted = AccessibilityPermission.isTrusted()
-        if trusted && !previousTrust { inputReady = onPermissionGranted() }
+        if trusted && (!previousTrust || !inputReady) { inputReady = onPermissionGranted() }
         if !trusted { inputReady = false }
         previousTrust = trusted
         permissionStatus.stringValue = trusted ? (inputReady ? "Allowed ✓" : "Reopen the helper") : "Not granted"
@@ -136,8 +139,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
     @objc private func requestPermission() {
         guard installed else { return }
+        beforeOpeningSystemSettings()
         AccessibilityPermission.openSettings()
         refreshPermission()
     }
-    @objc private func openLoginItems() { launchAtLogin.openSystemSettings() }
+    @objc private func openLoginItems() {
+        beforeOpeningSystemSettings()
+        launchAtLogin.openSystemSettings()
+    }
 }

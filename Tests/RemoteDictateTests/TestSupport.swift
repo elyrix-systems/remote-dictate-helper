@@ -46,6 +46,7 @@ struct TestRunner {
         testSettingsReadiness()
         testAccessibilitySettingsNavigation()
         try testPermissionRevocationSafety()
+        testPermissionSettingsGuard()
         try await testDisabledScreenSamplerStops()
         try testLaunchAtLogin()
         try testOperationalLog()

@@ -78,9 +78,30 @@ and [disabled-tap API](https://developer.apple.com/documentation/coregraphics/cg
 provide external evidence for teardown. A local spike invalidates an owned real
 Mach port and run-loop source before the UI callback, with no global tap or TCC
 change. Regression tests cover pending admission, accepted key-up, duplicate
-disabled events and stop-before-creation. Actual permission removal while the
-installed app runs remains a controlled local integration check; mocked trust
-and a disposable port are not proof of WindowServer recovery.
+disabled events and stop-before-creation. The installed 113.1.1 candidate failed
+the physical revocation test even after both native teardown calls returned.
+Mocked trust and a disposable port are not proof of WindowServer recovery.
+
+`PermissionMonitoringGuard` therefore retires both monitors **before** opening
+System Settings, including activation from outside the helper. It also guards
+startup, source changes and the hidden helper Settings timer against recreation
+while the permission pane is active. A direct button request stays suspended
+through launch. On leaving, permission is checked before fresh monitoring can
+start; a missing grant retains the error. Ordinary local/remote focus changes do
+not rebuild taps. A paused-state timer updates the permission status; it does not
+poll on the event thread. Existing clipboard cleanup still owns any interrupted
+Screen Sharing transfer.
+
+The risky assumption for this precaution is that removing taps *before* an
+interactive revocation avoids the failing WindowServer transition. There is a
+matching [first-hand report on Apple's developer forum](https://developer.apple.com/forums/thread/844416);
+Apple DTS requested a system diagnostic but did not publish a fix there. This is
+external incident evidence, not an Apple guarantee about our workaround. Local
+state-transition tests establish no recreation while guarded; a read-only native
+tap inventory must confirm that the installed process owns zero taps in System
+Settings before another coordinated revocation test. Revocation outside that UI,
+for example by device management while a remote window stays active, is not
+covered by the pre-entry guard. Do not claim it is universally freeze-proof.
 
 Readiness gate: workspace activation notifications are Apple's external API
 contract ([reference](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)).

@@ -76,6 +76,7 @@ final class PasteEventFilter: @unchecked Sendable {
     private var modifiers: UInt64 = 0
     private var lastInput = "none"
     private let ownPID = ProcessInfo.processInfo.processIdentifier
+    private let nativeID = UUID()
 
     init(sources: [DictationSource], onEvent: @escaping @Sendable (PasteInputEvent, PasteCaptureDecision?) -> Void,
          onDisabled: @escaping @Sendable () -> Void, trackPhysicalModifiers: Bool = false,
@@ -170,8 +171,9 @@ final class PasteEventFilter: @unchecked Sendable {
         permissionTimer.schedule(deadline: .now() + 0.5, repeating: 0.5)
         permissionTimer.setEventHandler { @Sendable [weak self] in self?.checkPermission() }
         permissionTimer.resume()
-        let resources = NativeTapResources(tap: tap, loop: current, permissionTimer: permissionTimer)
+        let resources = NativeTapResources(tap: tap, loop: current, permissionTimer: permissionTimer, id: nativeID)
         let installed = installTap { resources.disconnect() }
+        DiagnosticLog.shared.record("filter.native_created id=\(nativeID) installed=\(installed) physicalModifiers=\(trackPhysicalModifiers)")
         ready.signal()
         // Creation already enables a tap. Never re-enable it after publication:
         // stop/revocation may race setup. A bounded run also handles stop-before-run.
@@ -182,6 +184,7 @@ final class PasteEventFilter: @unchecked Sendable {
             retire(reason: "native_port_invalidated")
         }
         CFRunLoopRemoveSource(current, source, .commonModes)
+        DiagnosticLog.shared.record("filter.worker_finished id=\(nativeID) portValid=\(CFMachPortIsValid(tap)) sourceValid=\(CFRunLoopSourceIsValid(source))")
     }
     func handle(type: CGEventType, event: CGEvent) -> Bool {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
@@ -297,13 +300,15 @@ private final class NativeTapResources: @unchecked Sendable {
     let tap: CFMachPort
     let loop: CFRunLoop
     let permissionTimer: DispatchSourceTimer
-    init(tap: CFMachPort, loop: CFRunLoop, permissionTimer: DispatchSourceTimer) {
-        self.tap = tap; self.loop = loop; self.permissionTimer = permissionTimer
+    let id: UUID
+    init(tap: CFMachPort, loop: CFRunLoop, permissionTimer: DispatchSourceTimer, id: UUID) {
+        self.tap = tap; self.loop = loop; self.permissionTimer = permissionTimer; self.id = id
     }
     func disconnect() {
         permissionTimer.cancel()
         CGEvent.tapEnable(tap: tap, enable: false)
         CFMachPortInvalidate(tap)
         CFRunLoopStop(loop); CFRunLoopWakeUp(loop)
+        DiagnosticLog.shared.record("filter.native_invalidated id=\(id) portValid=\(CFMachPortIsValid(tap))")
     }
 }

@@ -121,7 +121,7 @@ final class WindowsAppPasteMonitor {
     func filterDisabled() {
         guard filterHealthy else { return }
         stop()
-        report("Windows App filter disabled; input passes through")
+        report("Windows App input monitoring stopped after native filter failure")
         onCompleted(.failure(WindowsAppPasteError.unavailable))
     }
 

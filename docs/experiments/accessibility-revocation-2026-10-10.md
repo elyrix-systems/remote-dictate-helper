@@ -162,4 +162,29 @@ The final local **113.1.5** build passed the complete tests and privacy scan and
 was installed with the same certificate. It read the existing grant and created
 two native taps; opening System Settings removed both. Native inventory confirmed
 zero while that pane was foreground. No additional permission grant was needed
-for this installation. The no-restart remove/request/regrant trial is pending.
+for this installation.
+
+## Owner's no-restart permission cycle accepted: 113.1.5
+
+The owner removed the helper's Accessibility row, requested it again from the
+helper's Settings and regranted access without restarting the helper. They
+reported that the cycle worked and ordinary input remained responsive. The
+same parent process recorded denied at 12:21:12 UTC and granted at 12:21:22 UTC,
+while System Settings was still foreground. Monitoring remained paused there;
+after leaving System Settings, exactly two fresh taps were created. Subsequent
+main-queue heartbeats remained responsive.
+
+The remaining UI defect was `Input unavailable` during that intentional pause.
+Build **113.1.6** separates permission presentation from input readiness: granted
+access always displays green `Allowed ✓`, including while System Settings is
+foreground. The existing one-second status refresh remains; there is no need to
+close the permission pane to update the label. Initial setup completion still
+requires actual input readiness. This presentation change does not modify tap
+lifetimes or the accepted paste and clipboard protocols.
+
+The 113.1.6 UI change compiled and passed the privacy scan. It was installed after
+normal Quit with the same designated signing requirement. The new process read
+the existing grant and created both taps without requesting permission again.
+The full regression suite had passed on the preceding 113.1.5 runtime; this
+follow-up changes only the label/color and records that physical trial. The
+revoke/regrant cycle was not repeated during installation.

@@ -129,10 +129,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switch access {
         case .checking: permissionStatus.stringValue = "Checking…"
         case .unavailable: permissionStatus.stringValue = "Unable to check access"
-        case .granted: permissionStatus.stringValue = inputReady ? "Allowed ✓" : "Input unavailable"
+        case .granted: permissionStatus.stringValue = "Allowed ✓"
         case .denied: permissionStatus.stringValue = "Not granted"
         }
-        permissionStatus.textColor = trusted && inputReady ? .systemGreen : .secondaryLabelColor
+        // Permission remains granted while input monitoring is safely paused in System Settings.
+        permissionStatus.textColor = trusted ? .systemGreen : .secondaryLabelColor
         if !UserDefaults.standard.bool(forKey: Self.completionKey),
            SettingsReadiness(installed: installed, accessibility: trusted, inputReady: inputReady,
                              sourceCount: settings.sources.count).canCompleteInitialConfiguration {

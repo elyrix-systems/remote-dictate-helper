@@ -116,17 +116,21 @@ authorize input. Only the user's button may spawn the request mode using
 distinguish a disabled entry from a removed one, so both take this request path.
 Already granted access opens the pane directly. Settings reads readiness without
 creating taps; failed native setup is not retried by its status timer.
+Its permission label reflects the grant alone, so an intentional monitoring pause
+in System Settings does not replace green `Allowed ✓` with an input error.
 
 Readiness gate: AX/CG preflight queries were assumed to reflect a removed grant.
 The 113.1.2 trial disproved this. A
 [Chromium investigation](https://chromium.googlesource.com/chromium/src/+/7474294381a3b199f2ecc66ed892c1e48ee1f970)
 suggested a HID query instead, but our installed 113.1.3 trial retained stale
 positive and negative HID results as well. That local failure overrides the
-generic external evidence. The next assumption is that a fresh signed process
-observes current AX permission under the same app identity. Child lifecycle and
-injected state transitions are tested; installed revoke/regrant and native alert
-attribution must also be verified locally. Do not infer either from CLI trust or
-the mocked tests. See the investigation record for actual trial outcomes.
+generic external evidence. The fresh-process design assumes the same signed
+executable observes current AX permission under the same app identity. Child
+lifecycle and injected state transitions are tested. The owner completed an
+installed remove/request/regrant cycle on 113.1.5 without a parent restart;
+logs recorded the new grant while System Settings was still foreground. This is
+local integration proof for that cycle, not a guarantee across every macOS/TCC
+configuration. See the investigation record for actual trial outcomes.
 
 Readiness gate: workspace activation notifications are Apple's external API
 contract ([reference](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)).

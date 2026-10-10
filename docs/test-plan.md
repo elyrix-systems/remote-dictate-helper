@@ -145,8 +145,10 @@ While testing removal, also keep the helper Settings visible and confirm it
 changes from Allowed to Not granted. A deleted entry must be requested again by
 the Accessibility button; use the native alert's Open System Settings action and
 expect only one navigation. A disabled entry may use the same native request;
-an existing grant opens the pane directly. Returning after granting must show
-Allowed and create two fresh taps without restarting the helper.
+an existing grant opens the pane directly. After granting, the visible helper
+Settings must show green Allowed on its next status refresh even while System
+Settings remains foreground and taps remain paused. Returning must create two
+fresh taps without restarting the helper.
 Neither a delayed check nor a previous cached grant may show Allowed or resume
 input while the current permission is unknown.
 

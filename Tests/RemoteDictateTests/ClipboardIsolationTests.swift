@@ -5,6 +5,7 @@ private final class DelayedClipboardProvider: NSObject, NSPasteboardItemDataProv
     init(delay: TimeInterval) { self.delay = delay }
     func pasteboard(_ pasteboard: NSPasteboard?, item: NSPasteboardItem,
                     provideDataForType type: NSPasteboard.PasteboardType) {
+        FileHandle.standardOutput.write(Data([2]))
         Thread.sleep(forTimeInterval: delay)
         item.setData(Data("SYNTHETIC-DEFERRED-文字".utf8), forType: type)
     }
@@ -23,17 +24,26 @@ func runClipboardProviderFixture() -> Bool {
     return true
 }
 
-private func provider(for board: NSPasteboard, delay: TimeInterval) throws -> Process {
+private func provider(for board: NSPasteboard, delay: TimeInterval,
+                      onRead: (@Sendable () -> Void)? = nil) throws -> Process {
     let process = Process(), ready = Pipe()
     process.executableURL = Bundle.main.executableURL
     process.arguments = ["--test-clipboard-provider", board.name.rawValue, String(delay)]
     process.standardOutput = ready; process.standardError = FileHandle.nullDevice
     try process.run()
     expectEqual(ready.fileHandleForReading.readData(ofLength: 1), Data([1]))
+    if let onRead {
+        ready.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.contains(2) { onRead() }
+            if data.isEmpty { handle.readabilityHandler = nil }
+        }
+    }
     return process
 }
 
 private func stopFixture(_ process: Process) {
+    (process.standardOutput as? Pipe)?.fileHandleForReading.readabilityHandler = nil
     if process.isRunning { kill(process.processIdentifier, SIGKILL) }
     process.waitUntilExit()
 }
@@ -67,25 +77,28 @@ func testIsolatedClipboardReading() async throws {
     catch IsolatedClipboardError.timedOut { }
     expectTrue(ProcessInfo.processInfo.systemUptime - started < 0.5, "A provider must not hold the caller for its 60-second timeout")
     expectThrows(try access.read(board), "Timed-out result cannot become a cached snapshot")
+    stopFixture(hung)
 
     // Check progress by ordering, not by requiring three timer ticks inside an
-    // 80 ms wall-clock window on a shared CI runner. If prepare blocks the main
-    // actor, this test cannot resume until the read has already finished.
-    let (admitted, admission) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
-    let progressAccess = ClipboardAccess(reader: isolationTestReader(onAdmitted: { _ = admission.yield(()) }))
+    // 80 ms wall-clock window on a shared CI runner. A fresh provider signals
+    // entry into its blocking callback, so the assertion cannot run before I/O.
+    // If prepare blocks the main actor, this test resumes only after it finishes.
+    let (reads, readSignal) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    let progressProvider = try provider(for: board, delay: 60, onRead: { _ = readSignal.yield(()) })
+    defer { stopFixture(progressProvider) }
     var readFinished = false
     let pendingRead = Task { @MainActor in
-        defer { readFinished = true; admission.finish() }
-        try await progressAccess.prepare(board, timeout: 2)
+        defer { readFinished = true; readSignal.finish() }
+        try await access.prepare(board, timeout: 2)
     }
-    var admissionEvents = admitted.makeAsyncIterator()
-    let admissionEvent = await admissionEvents.next()
-    expectNotNil(admissionEvent, "The reader must reserve its slot before the progress assertion")
+    var readEvents = reads.makeAsyncIterator()
+    let readEvent = await readEvents.next()
+    expectNotNil(readEvent, "The provider must enter its blocking read before the progress assertion")
     expectFalse(readFinished, "Main actor must resume while clipboard I/O is still pending")
     pendingRead.cancel()
     do { try await pendingRead.value; fail("Cancelled pending read must not succeed") }
     catch is CancellationError { }
-    stopFixture(hung)
+    stopFixture(progressProvider)
 
     // Timeout reaps the reader and releases admission, rather than leaving an
     // uninterruptible AppKit worker occupying it for the next minute.
@@ -164,10 +177,9 @@ func testAsyncCaptureAndExpiredDecision() async throws {
     print("Asynchronous capture/release/restoration and expired event-tap decision passed")
 }
 
-private func isolationTestReader(onAdmitted: (@Sendable () -> Void)? = nil) -> IsolatedClipboardReader {
+private func isolationTestReader() -> IsolatedClipboardReader {
     if let executable = ProcessInfo.processInfo.environment["RD_TEST_READER_EXECUTABLE"] {
-        return IsolatedClipboardReader(executable: URL(fileURLWithPath: executable), onAdmitted: onAdmitted)
+        return IsolatedClipboardReader(executable: URL(fileURLWithPath: executable))
     }
-    if let onAdmitted { return IsolatedClipboardReader(onAdmitted: onAdmitted) }
     return .shared
 }

@@ -16,9 +16,11 @@ final class DiagnosticContextObserver {
     private let probeSlot = DispatchSemaphore(value: 1)
     private let windows = DiagnosticWindowProbe()
     private let log = DiagnosticLog.shared
+    private let watchdog = MainQueueWatchdog()
 
     func start() {
         guard log.enabled, timer == nil else { return }
+        watchdog.start()
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") ?? "unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") ?? "unknown"
         log.record("diagnostics.start version=\(version) build=\(build) os=\(ProcessInfo.processInfo.operatingSystemVersionString) timezone=\(TimeZone.current.identifier) utcOffset=\(TimeZone.current.secondsFromGMT()) pid=\(ProcessInfo.processInfo.processIdentifier) contents=\(log.textEnabled ? "captured-source-text" : "excluded")")
@@ -53,6 +55,7 @@ final class DiagnosticContextObserver {
     }
 
     func stop() {
+        watchdog.stop()
         timer?.invalidate(); timer = nil
         for (center, token) in observers { center.removeObserver(token) }
         observers.removeAll()

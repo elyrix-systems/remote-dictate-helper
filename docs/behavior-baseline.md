@@ -440,3 +440,23 @@ removed; production regression tests remain. The old procedures and design notes
 are preserved in the [experiment archive](experiments/windows-clipboard-2026-10-09.md),
 with implementation commits. This cleanup is not an additional physical trial or
 a claim that every intermittent Windows App issue is resolved.
+
+## Local liveness candidate accepted for release 1.1.3
+
+On 2026-10-10, the owner reported that local **1.1.2 / build 112.1.2** had
+continued working stably and predictably after further use, without recurring
+hangs. The owner then authorized PR review and release **1.1.3**. This is
+user-reported acceptance on the existing Mac; the duration and each source,
+client, sleep/wake and recording-mode combination were not separately specified.
+
+The candidate removes redundant ordinary-input callbacks, bounds queued paste
+admission, rejects off-target candidates before identity lookup, suspends the
+Screen Sharing sampler outside its client and ignores stopped-monitor callbacks.
+Regression checks cover these guards alongside the existing paste and clipboard
+protocols. The original hang was not captured, so this evidence does not establish
+its exact cause or guarantee every external clipboard/source-app stall is fixed.
+See the [investigation record](experiments/local-input-liveness-2026-10-09.md).
+
+The locally installed candidate has metadata diagnostics enabled and transcript
+logging disabled. The GitHub release package disables both diagnostic flags;
+its packaging and signature are checked separately from this local acceptance.

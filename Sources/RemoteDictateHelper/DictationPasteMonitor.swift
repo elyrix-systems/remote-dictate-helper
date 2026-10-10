@@ -64,6 +64,8 @@ final class DictationPasteMonitor {
     private var sampledTargetPID: pid_t?
     private var timer: Timer?
     private var filter: PasteEventFilter?
+    private var filterEpoch = UUID()
+    private let targetScope = PasteTargetScope(bundleIdentifier: "com.apple.ScreenSharing")
     private var filterHealthy = true
     // Remains through cancellation so the up belonging to a removed down is
     // removed as well, even if focus moved. No synthetic replacement is posted.
@@ -88,17 +90,37 @@ final class DictationPasteMonitor {
     func start() throws {
         guard AccessibilityPermission.isTrusted() else { throw DictationCaptureError.unavailable }
         filterHealthy = true
+        filterEpoch = UUID()
+        let token = filterEpoch
         let next = PasteEventFilter(sources: sources, onEvent: { [weak self] input, decision in
-            Task { @MainActor in
-                guard let self, self.filter != nil else { return }
+            let deliver: PasteAdmissionQueue.Work = {
+                guard let self, self.filter != nil, self.filterEpoch == token else { decision?.resolve(false); return }
                 self.handle(input, decision: decision)
             }
+            if let decision { PasteAdmissionQueue.shared.submit(decision, work: deliver) }
+            else { DispatchQueue.main.async(execute: deliver) }
         }, onDisabled: { [weak self] in
-            Task { @MainActor in self?.filterDisabled() }
-        })
+            Task { @MainActor in
+                guard let self, self.filterEpoch == token else { return }
+                self.filterDisabled()
+            }
+        }, targetIsActive: { [gate = targetScope.gate] in gate.isActive })
         guard next.start() else { throw DictationCaptureError.unavailable }
         filter = next
         report("active paste filter installed; no Backspace")
+        targetScope.start { [weak self] in self?.setSamplingActive($0) }
+    }
+
+    func setSamplingActive(_ active: Bool) {
+        generation += 1
+        sampleTask?.cancel(); sampleTask = nil
+        timer?.invalidate(); timer = nil
+        guard active else {
+            captureTask?.cancel(); captureTask = nil
+            history.clear(); sampledTargetPID = nil
+            if pending != nil { pending?.failure = DictationCaptureError.targetChanged }
+            return
+        }
         let timer = Timer(timeInterval: 0.02, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.scheduleSample() }
         }
@@ -108,12 +130,14 @@ final class DictationPasteMonitor {
     }
 
     func stop() {
+        filterEpoch = UUID()
         if let pending { trace(pending, "stop; no replay") }
         generation += 1
         sampleTask?.cancel(); sampleTask = nil
         captureTask?.cancel(); captureTask = nil
         timer?.invalidate(); timer = nil
         filter?.stop(); filter = nil
+        targetScope.stop()
         pending = nil; suppressedPID = nil; history.clear(); sampledTargetPID = nil
     }
 

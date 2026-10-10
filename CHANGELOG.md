@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 1.1.3 — 2026-10-10
+
+- Improve stability during extended use by removing unnecessary queued work for
+  ordinary keyboard and mouse input. Keep at most one waiting paste-admission
+  request; expired requests and callbacks from stopped monitors cannot replay.
+- Bypass paste admission outside Apple Screen Sharing and Windows App before
+  source-app lookup. Suspend Screen Sharing's baseline sampler while working in
+  local apps and start fresh when returning to the remote client.
+- Add regression coverage for sustained input, bounded queues, focus changes
+  and recovery. Maintainer diagnostic builds can record main-queue delays without
+  transcript contents; release downloads keep diagnostics disabled.
+
+Validation: all automated regression checks passed. After using local build
+112.1.2 for a further period, the owner reported stable, predictable operation
+with no recurring hangs. The original hang was not captured, so its exact cause
+remains unconfirmed. The accepted paste sequences and clipboard restoration
+protocols are retained. Downloads remain ad-hoc signed and not Apple notarized.
+
 ## 1.1.2 — 2026-10-09
 
 - Refresh Windows App focus before dictation paste to address repeated insertion

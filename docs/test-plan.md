@@ -22,6 +22,7 @@ The custom native runner works with Command Line Tools without XCTest.
 | Diagnostic text opt-in | Two explicit build flags; metadata-only and disabled builds omit text. Isolated named-board UTF-8 capture, escaped Russian/multiline round-trip, size bounds and truncation, unavailable invalid UTF-8, unchanged formats/revisions, source-only capture in both adapters, operation linkage through cancellation, existing-file privacy and symlink refusal. These establish local capture, not remote receipt. |
 | Interception | Manual/local/unknown input passes through; accepted down/up pairing; slow capture and disabled filter fail safely; no deletion. |
 | Input-filter liveness | Blocked source lookup/admission returns within the capture budget, bounds outstanding work across filter restarts and cannot capture late; ordinary/manual/self input skips source lookup; stalled admission in both adapters cannot schedule input or a clipboard read after expiry. No real events posted. |
+| Local-input isolation | 60,000 ordinary events enqueue no callback while preserving cancellation counters; 1,000 local synthetic pastes bypass identity/admission; accepted V-up remains paired after focus loss. 20,000 expired admissions retain one queued block and recover. Workspace scope start/stop/sleep/wake, baseline timer suspension and a bounded independent main-queue heartbeat use fake notifications/queues and a named board. |
 | Shared source contract | Real event classification into both client monitors for Flow, superwhisper, Valis and a custom source; main/helper bundle IDs, consecutive captures and both clipboard-return policies. Removed/disabled sources pass through. No running dictation apps required. |
 | Clipboard | Full-format original restoration, UTF-8 HTML transport, empty originals, clipboard ownership, newer/equal-text copies and restoration deadlines. |
 | Input | Exactly one private Command+V; permission/target/modifier refusal; mid-sequence release; HID residue guards and no retry. |
@@ -110,6 +111,14 @@ remain responsive. Verify one insertion and the existing source/target clipboard
 restoration behavior. A recovered process sample cannot establish the cause of a
 previous hang. The deadline tests establish local refusal of late work, not remote
 receipt or resolution of the separate stale RDP clipboard issue.
+
+For the foreground gate, check local dictation before and after remote use, then
+return to a remote field before finishing toggle recording. Check both clients
+and repeated operations. `filter.scope` should close in a local app; no candidate
+lookup/read should follow local pastes. Screen Sharing baseline reads should
+stop until returning to its window. Keep the diagnostic build through ordinary
+extended use; if a stall recurs, preserve process samples **before** restarting
+the source/helper when practical. Heartbeat delay alone is not a root-cause proof.
 
 ## Windows App physical checks
 

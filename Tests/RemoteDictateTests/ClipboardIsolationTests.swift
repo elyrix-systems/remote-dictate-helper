@@ -62,20 +62,27 @@ func testIsolatedClipboardReading() async throws {
     stopFixture(delayed)
 
     let hung = try provider(for: board, delay: 60)
-    var ticks = 0
-    let heartbeat = Task { @MainActor in
-        while !Task.isCancelled {
-            ticks += 1
-            do { try await Task.sleep(for: .milliseconds(10)) } catch { return }
-        }
-    }
     let started = ProcessInfo.processInfo.systemUptime
     do { try await access.prepare(board, timeout: 0.08); fail("Hung provider must time out") }
     catch IsolatedClipboardError.timedOut { }
     expectTrue(ProcessInfo.processInfo.systemUptime - started < 0.5, "A provider must not hold the caller for its 60-second timeout")
-    expectTrue(ticks >= 3, "Main actor continues running during clipboard I/O")
     expectThrows(try access.read(board), "Timed-out result cannot become a cached snapshot")
-    heartbeat.cancel(); stopFixture(hung)
+
+    // Check progress by ordering, not by requiring three timer ticks inside an
+    // 80 ms wall-clock window on a shared CI runner. If prepare blocks the main
+    // actor, this test cannot resume until the read has already finished.
+    var readStarted = false, readFinished = false
+    let pendingRead = Task { @MainActor in
+        readStarted = true
+        defer { readFinished = true }
+        try await access.prepare(board, timeout: 2)
+    }
+    while !readStarted { await Task.yield() }
+    expectFalse(readFinished, "Main actor must resume while clipboard I/O is still pending")
+    pendingRead.cancel()
+    do { try await pendingRead.value; fail("Cancelled pending read must not succeed") }
+    catch is CancellationError { }
+    stopFixture(hung)
 
     // Timeout reaps the reader and releases admission, rather than leaving an
     // uninterruptible AppKit worker occupying it for the next minute.

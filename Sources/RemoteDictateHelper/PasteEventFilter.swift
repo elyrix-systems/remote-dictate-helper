@@ -34,6 +34,9 @@ final class PasteCaptureDecision: @unchecked Sendable {
         accepted = value; completed = true; ready.signal()
         return true
     }
+    func cancel() {
+        lock.lock(); accepted = false; completed = true; ready.signal(); lock.unlock()
+    }
     func wait() -> Bool {
         let remaining = max(0, deadline - ProcessInfo.processInfo.systemUptime)
         _ = ready.wait(timeout: .now() + remaining)
@@ -53,14 +56,17 @@ final class PasteEventFilter: @unchecked Sendable {
     private let trackPhysicalModifiers: Bool
     private let sourceIdentifier: @Sendable (pid_t) -> String?
     private let targetIsActive: @Sendable () -> Bool
+    private let permissionCheck: @Sendable () -> Bool
     // Shared across both client filters and stop/start cycles. Even an OS call
     // that never returns cannot accumulate lookup workers as filters restart.
     private static let sourceQueue = DispatchQueue(label: "systems.elyrix.RemoteDictateHelper.source-identity")
     private static let sourceSlot = DispatchSemaphore(value: 1)
+    private static let permissionQueue = DispatchQueue(label: "systems.elyrix.RemoteDictateHelper.permission")
     private let lock = NSLock()
     private let ready = DispatchSemaphore(value: 0)
-    private var loop: CFRunLoop?
-    private var port: CFMachPort?
+    private var disconnectTap: (@Sendable () -> Void)?
+    private var activeDecision: PasteCaptureDecision?
+    private var started = false
     private var stopped = false
     private var suppressedPID: pid_t?
     private var suppressedAt: TimeInterval = 0
@@ -70,10 +76,12 @@ final class PasteEventFilter: @unchecked Sendable {
     private var modifiers: UInt64 = 0
     private var lastInput = "none"
     private let ownPID = ProcessInfo.processInfo.processIdentifier
+    private let nativeID = UUID()
 
     init(sources: [DictationSource], onEvent: @escaping @Sendable (PasteInputEvent, PasteCaptureDecision?) -> Void,
          onDisabled: @escaping @Sendable () -> Void, trackPhysicalModifiers: Bool = false,
          targetIsActive: @escaping @Sendable () -> Bool = { true },
+         permissionCheck: @escaping @Sendable () -> Bool = { AccessibilityPermission.isTrusted() },
          sourceIdentifier: @escaping @Sendable (pid_t) -> String? = {
              NSRunningApplication(processIdentifier: $0)?.bundleIdentifier
          }) {
@@ -81,17 +89,55 @@ final class PasteEventFilter: @unchecked Sendable {
         self.trackPhysicalModifiers = trackPhysicalModifiers
         self.sourceIdentifier = sourceIdentifier
         self.targetIsActive = targetIsActive
+        self.permissionCheck = permissionCheck
     }
     func start() -> Bool {
+        lock.lock()
+        guard !started, !stopped else { lock.unlock(); return false }
+        started = true; lock.unlock()
         let worker = Thread { [self] in run() }
         worker.name = "Remote Dictate paste filter"; worker.start()
         guard ready.wait(timeout: .now() + 2) == .success else { stop(); return false }
         lock.lock(); defer { lock.unlock() }
-        return port != nil && !stopped
+        return disconnectTap != nil && !stopped
     }
-    func stop() {
-        lock.lock(); stopped = true; suppressedPID = nil; let current = loop; lock.unlock()
-        if let current { CFRunLoopStop(current); CFRunLoopWakeUp(current) }
+    func stop() { retire(reason: nil) }
+    var isStopped: Bool { lock.lock(); defer { lock.unlock() }; return stopped }
+
+    /// Publish cleanup atomically with stop. Late native creation is torn down,
+    /// never enabled again. Tests install an owned fake connection here.
+    @discardableResult func installTap(disconnect: @escaping @Sendable () -> Void) -> Bool {
+        lock.lock()
+        let accepted = !stopped && disconnectTap == nil
+        if accepted { disconnectTap = disconnect }
+        lock.unlock()
+        if !accepted { disconnect() }
+        return accepted
+    }
+
+    private func retire(reason: String?) {
+        lock.lock()
+        guard !stopped else { lock.unlock(); return }
+        stopped = true
+        suppressedPID = nil; suppressedSource = nil; resolvedSource = nil
+        let disconnect = disconnectTap, decision = activeDecision
+        disconnectTap = nil; activeDecision = nil
+        lock.unlock()
+        decision?.cancel()
+        // Disconnect before logging or notifying the main actor. Neither UI
+        // progress nor a future run-loop iteration may keep this tap installed.
+        disconnect?()
+        if let reason {
+            DiagnosticLog.shared.record("filter.retired reason=\(reason) physicalModifiers=\(trackPhysicalModifiers)")
+            onDisabled()
+        }
+    }
+
+    /// Runs on the permission queue, never on the input callback or main actor.
+    /// Disabled-tap callbacks remain the immediate path if trust is cached.
+    func checkPermission() {
+        guard !isStopped else { return }
+        if !permissionCheck() { retire(reason: "accessibility_revoked") }
     }
     var inputSequence: UInt64 {
         lock.lock(); defer { lock.unlock() }; return sequence
@@ -113,25 +159,36 @@ final class PasteEventFilter: @unchecked Sendable {
         }
         guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap,
             options: .defaultTap, eventsOfInterest: mask, callback: callback,
-            userInfo: Unmanaged.passUnretained(self).toOpaque()),
-              let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            userInfo: Unmanaged.passUnretained(self).toOpaque()) else {
             ready.signal(); return
         }
-        let current = CFRunLoopGetCurrent()
-        lock.lock(); port = tap; loop = current; let cancelled = stopped; lock.unlock()
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0),
+              let current = CFRunLoopGetCurrent() else {
+            CFMachPortInvalidate(tap); ready.signal(); return
+        }
         CFRunLoopAddSource(current, source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: !cancelled)
+        let permissionTimer = DispatchSource.makeTimerSource(queue: Self.permissionQueue)
+        permissionTimer.schedule(deadline: .now() + 0.5, repeating: 0.5)
+        permissionTimer.setEventHandler { @Sendable [weak self] in self?.checkPermission() }
+        permissionTimer.resume()
+        let resources = NativeTapResources(tap: tap, loop: current, permissionTimer: permissionTimer, id: nativeID)
+        let installed = installTap { resources.disconnect() }
+        DiagnosticLog.shared.record("filter.native_created id=\(nativeID) installed=\(installed) physicalModifiers=\(trackPhysicalModifiers)")
         ready.signal()
-        if !cancelled { CFRunLoopRun() }
-        CGEvent.tapEnable(tap: tap, enable: false)
-        CFRunLoopRemoveSource(current, source, .commonModes); CFMachPortInvalidate(tap)
-        lock.lock(); port = nil; loop = nil; lock.unlock()
+        // Creation already enables a tap. Never re-enable it after publication:
+        // stop/revocation may race setup. A bounded run also handles stop-before-run.
+        if installed {
+            while !isStopped && CFMachPortIsValid(tap) {
+                CFRunLoopRunInMode(.defaultMode, 0.5, false)
+            }
+            retire(reason: "native_port_invalidated")
+        }
+        CFRunLoopRemoveSource(current, source, .commonModes)
+        DiagnosticLog.shared.record("filter.worker_finished id=\(nativeID) portValid=\(CFMachPortIsValid(tap)) sourceValid=\(CFRunLoopSourceIsValid(source))")
     }
     func handle(type: CGEventType, event: CGEvent) -> Bool {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            DiagnosticLog.shared.record("filter.disabled type=\(type.rawValue) physicalModifiers=\(trackPhysicalModifiers)")
-            lock.lock(); suppressedPID = nil; lock.unlock()
-            onDisabled(); return false
+            retire(reason: "disabled_\(type.rawValue)"); return false
         }
         lock.lock(); let inactive = stopped; lock.unlock()
         guard !inactive else { return false }
@@ -164,6 +221,7 @@ final class PasteEventFilter: @unchecked Sendable {
         if paired && input.kind == .up { suppressedPID = nil; suppressedSource = nil }
         lock.unlock()
         if paired {
+            guard !isStopped else { return false }
             // Only the accepted release needs an observer callback. Repeated
             // downs are suppressed without creating more main-actor work.
             if input.kind == .up { onEvent(input, nil) }
@@ -183,6 +241,14 @@ final class PasteEventFilter: @unchecked Sendable {
         }
         guard targetIsActive() else { return false }
         let decision = PasteCaptureDecision()
+        lock.lock()
+        guard !stopped else { lock.unlock(); return false }
+        activeDecision = decision; lock.unlock()
+        defer {
+            lock.lock()
+            if activeDecision === decision { activeDecision = nil }
+            lock.unlock()
+        }
         let decisionStarted = ProcessInfo.processInfo.systemUptime
         // Launch Services may block. Resolve only candidate pastes off the tap,
         // inside the same deadline. One outstanding lookup bounds resource use
@@ -214,13 +280,35 @@ final class PasteEventFilter: @unchecked Sendable {
             guard !inactive, targetIsActive() else { decision.resolve(false); return }
             onEvent(classified, decision)
         }
-        let accepted = decision.wait()
-        lock.lock(); let classified = resolvedSource?.sequence == candidate.sequence ? resolvedSource : nil; lock.unlock()
-        DiagnosticLog.shared.record("filter.decision physicalModifiers=\(trackPhysicalModifiers) accepted=\(accepted) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - decisionStarted) * 1000)) \((classified ?? input).diagnosticMetadata)")
+        let resolved = decision.wait()
+        lock.lock()
+        let accepted = resolved && !stopped
+        let classified = resolvedSource?.sequence == candidate.sequence ? resolvedSource : nil
         if accepted {
-            lock.lock(); suppressedPID = pid; suppressedSource = classified
-            suppressedAt = ProcessInfo.processInfo.systemUptime; lock.unlock()
+            suppressedPID = pid; suppressedSource = classified
+            suppressedAt = ProcessInfo.processInfo.systemUptime
         }
+        lock.unlock()
+        DiagnosticLog.shared.record("filter.decision physicalModifiers=\(trackPhysicalModifiers) accepted=\(accepted) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - decisionStarted) * 1000)) \((classified ?? input).diagnosticMetadata)")
         return accepted
+    }
+}
+
+/// Native resources are released once by the filter's atomic retirement path.
+/// Core Foundation invalidation is thread-safe and also invalidates its source.
+private final class NativeTapResources: @unchecked Sendable {
+    let tap: CFMachPort
+    let loop: CFRunLoop
+    let permissionTimer: DispatchSourceTimer
+    let id: UUID
+    init(tap: CFMachPort, loop: CFRunLoop, permissionTimer: DispatchSourceTimer, id: UUID) {
+        self.tap = tap; self.loop = loop; self.permissionTimer = permissionTimer; self.id = id
+    }
+    func disconnect() {
+        permissionTimer.cancel()
+        CGEvent.tapEnable(tap: tap, enable: false)
+        CFMachPortInvalidate(tap)
+        CFRunLoopStop(loop); CFRunLoopWakeUp(loop)
+        DiagnosticLog.shared.record("filter.native_invalidated id=\(id) portValid=\(CFMachPortIsValid(tap))")
     }
 }

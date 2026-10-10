@@ -460,3 +460,17 @@ See the [investigation record](experiments/local-input-liveness-2026-10-09.md).
 The locally installed candidate has metadata diagnostics enabled and transcript
 logging disabled. The GitHub release package disables both diagnostic flags;
 its packaging and signature are checked separately from this local acceptance.
+
+## Accessibility removal and regrant accepted locally: 113.1.5
+
+On 2026-10-10, the owner completed removal of the running helper's Accessibility
+row, a new permission request and regrant without restarting the helper. Mouse
+and keyboard input remained responsive. Permission changes were detected while
+System Settings was foreground, with input monitoring intentionally paused.
+Monitoring resumed after leaving System Settings. This is local acceptance of
+that permission cycle, not a new dictation or clipboard-delivery trial.
+
+Settings must display green `Allowed ✓` whenever permission is granted, including
+during the protective monitoring pause in System Settings. Input readiness is
+separate and still gates initial setup completion. See the
+[experiment record](experiments/accessibility-revocation-2026-10-10.md).

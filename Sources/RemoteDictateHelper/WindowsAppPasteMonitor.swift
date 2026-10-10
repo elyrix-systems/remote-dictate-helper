@@ -93,7 +93,8 @@ final class WindowsAppPasteMonitor {
                 return
             }
             PasteAdmissionQueue.shared.submit(decision) {
-                guard let self, self.filter != nil, self.generation == token else { decision.resolve(false); return }
+                guard let self, let filter = self.filter, !filter.isStopped,
+                      self.generation == token else { decision.resolve(false); return }
                 _ = self.observe(event, decision: decision)
                 decision.resolve(false)
             }
@@ -111,15 +112,16 @@ final class WindowsAppPasteMonitor {
     }
 
     func stop() {
+        filter?.stop(); filter = nil
         generation += 1; filterHealthy = false
         task?.cancel(); releaseKeys?(); releaseKeys = nil; task = nil; isBusy = false
-        filter?.stop(); filter = nil
         targetScope.stop()
     }
 
     func filterDisabled() {
+        guard filterHealthy else { return }
         stop()
-        report("Windows App filter disabled; input passes through")
+        report("Windows App input monitoring stopped after native filter failure")
         onCompleted(.failure(WindowsAppPasteError.unavailable))
     }
 
@@ -151,7 +153,8 @@ final class WindowsAppPasteMonitor {
                 let validateWindow = try self.captureWindow(pid)
                 let validateStable: @MainActor () throws -> Void = {
                     try Task.checkCancellation()
-                    guard self.generation == currentGeneration, self.filterHealthy, self.isTrusted() else {
+                    guard self.generation == currentGeneration, self.filterHealthy,
+                          self.filter?.isStopped != true, self.isTrusted() else {
                         trace("cancel reason=unavailable generation=\(self.generation) expectedGeneration=\(currentGeneration) filterHealthy=\(self.filterHealthy)")
                         throw WindowsAppPasteError.unavailable
                     }

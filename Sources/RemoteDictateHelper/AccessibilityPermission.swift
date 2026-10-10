@@ -1,29 +1,47 @@
 import AppKit
-import ApplicationServices
 
 enum AccessibilityPermission {
     /// Background checks must never request access or open a window.
-    static func isTrusted() -> Bool { AXIsProcessTrusted() }
+    static func isTrusted() -> Bool { state == .granted }
+    static var state: AccessibilityAccessState { AccessibilityAccessMonitor.shared.state }
+    static func invalidate() { AccessibilityAccessMonitor.shared.invalidate() }
 
     /// The native access alert owns its Open System Settings action. Opening the
     /// pane ourselves as well races that alert and can leave it over Settings.
     @MainActor
     static func openSettings(
-        check: () -> Bool = { isTrusted() },
-        request: () -> Void = { requestAccess() },
+        check: () async -> AccessibilityAccessState = { await AccessibilityAccessMonitor.shared.refreshedState() },
+        request: () async -> Void = { await requestAccess() },
         openPane: () -> Void = {
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
                 NSWorkspace.shared.open(url)
             }
         }
-    ) {
-        if check() { openPane() } else { request() }
+    ) async {
+        switch await check() {
+        case .granted:
+            openPane()
+        case .denied:
+            // AX does not distinguish a disabled entry from a removed one.
+            // A fresh process requests either through the Accessibility API.
+            await request()
+        case .checking, .unavailable:
+            break // Keep input stopped; never infer a grant from a failed check.
+        }
     }
 
-    private static func requestAccess() {
-        // Use the documented option value because the SDK imports its CFString
-        // symbol as mutable global state under Swift 6 strict concurrency.
-        let request = ["AXTrustedCheckOptionPrompt": kCFBooleanTrue] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(request)
+    private static let requestQueue = DispatchQueue(label: "systems.elyrix.RemoteDictateHelper.access-request")
+    private static let requestSlot = DispatchSemaphore(value: 1)
+
+    private static func requestAccess() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            guard requestSlot.wait(timeout: .now()) == .success else { continuation.resume(); return }
+            requestQueue.async {
+                _ = AccessibilityProbeProcess.run(arguments: [AccessibilityProbeProcess.requestArgument])
+                invalidate()
+                requestSlot.signal()
+                continuation.resume()
+            }
+        }
     }
 }

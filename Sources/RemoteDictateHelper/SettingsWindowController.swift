@@ -10,32 +10,34 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         set { sourceSettings.value = newValue; loadFields() }
     }
     private let sourceSettings: DictationSourceSettings
-    private let onPermissionGranted: () -> Bool
+    private let inputIsReady: () -> Bool
+    private let beforeOpeningSystemSettings: () -> Void
     private let launchAtLogin: LaunchAtLogin
     private let loginStatus = NSTextField(labelWithString: "")
     private lazy var sourcesView = DictationSourcesView(sources: settings.sources, onChange: { [weak self] sources in
         guard let self else { throw CancellationError() }
         try self.sourceSettings.updateSources(sources)
-        self.previousTrust = false
         self.refreshPermission()
     })
     private let permissionStatus = NSTextField(labelWithString: "Not granted")
     private let permissionButton = NSButton(title: "Open Accessibility Settings…", target: nil, action: nil)
     private let installed = !Bundle.main.bundleURL.path.hasPrefix("/Volumes/")
     private var timer: Timer?
-    private var previousTrust = false
     private var inputReady = false
+    private var permissionRequest: Task<Void, Never>?
 
     init(settings: AppSettings, launchAtLogin: LaunchAtLogin, onSave: @escaping (AppSettings) throws -> Void,
-         onPermissionGranted: @escaping () -> Bool) {
+         beforeOpeningSystemSettings: @escaping () -> Void,
+         inputIsReady: @escaping () -> Bool) {
         self.sourceSettings = DictationSourceSettings(value: settings, persist: onSave)
-        self.onPermissionGranted = onPermissionGranted
+        self.inputIsReady = inputIsReady
+        self.beforeOpeningSystemSettings = beforeOpeningSystemSettings
         self.launchAtLogin = launchAtLogin
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 450),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 474),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Remote Dictate Helper Settings"
         // One settings pane with a stable size; only the app list scrolls.
-        window.contentMinSize = NSSize(width: 540, height: 450)
+        window.contentMinSize = NSSize(width: 540, height: 474)
         window.contentMaxSize = window.contentMinSize
         window.isReleasedWhenClosed = false
         window.center()
@@ -47,7 +49,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
-        previousTrust = false
         refreshPermission()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -92,6 +93,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let privacy = NSTextField(labelWithString: "The helper does not record audio or upload your clipboard.")
         privacy.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         privacy.textColor = .secondaryLabelColor
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+        let buildLabel = NSTextField(labelWithString: "Version \(version) · Build \(build)")
+        buildLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        buildLabel.textColor = .secondaryLabelColor
+        buildLabel.alignment = .right
+        buildLabel.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(buildLabel)
         let body = NSStackView(views: [scope, permissionHeading, permissionDetail, permissionRow, loginHeading, loginRow,
                                        heading, explanation, sourcesView, privacy])
         body.orientation = .vertical; body.alignment = .leading; body.spacing = 8
@@ -112,7 +121,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             permissionDetail.widthAnchor.constraint(equalTo: body.widthAnchor),
             explanation.widthAnchor.constraint(equalTo: body.widthAnchor),
             sourcesView.widthAnchor.constraint(equalTo: body.widthAnchor),
-            body.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -20)
+            body.bottomAnchor.constraint(lessThanOrEqualTo: buildLabel.topAnchor, constant: -8),
+            buildLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
+            buildLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
+            buildLabel.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16)
         ])
     }
     private func loadFields() {
@@ -122,12 +134,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func refreshPermission() {
         loginStatus.stringValue = launchAtLogin.statusDescription
         loginStatus.textColor = launchAtLogin.isEnabled ? .systemGreen : .secondaryLabelColor
-        let trusted = AccessibilityPermission.isTrusted()
-        if trusted && !previousTrust { inputReady = onPermissionGranted() }
-        if !trusted { inputReady = false }
-        previousTrust = trusted
-        permissionStatus.stringValue = trusted ? (inputReady ? "Allowed ✓" : "Reopen the helper") : "Not granted"
-        permissionStatus.textColor = trusted && inputReady ? .systemGreen : .secondaryLabelColor
+        let access = AccessibilityPermission.state
+        let trusted = access == .granted
+        inputReady = trusted && inputIsReady()
+        switch access {
+        case .checking: permissionStatus.stringValue = "Checking…"
+        case .unavailable: permissionStatus.stringValue = "Unable to check access"
+        case .granted: permissionStatus.stringValue = "Allowed ✓"
+        case .denied: permissionStatus.stringValue = "Not granted"
+        }
+        // Permission remains granted while input monitoring is safely paused in System Settings.
+        permissionStatus.textColor = trusted ? .systemGreen : .secondaryLabelColor
         if !UserDefaults.standard.bool(forKey: Self.completionKey),
            SettingsReadiness(installed: installed, accessibility: trusted, inputReady: inputReady,
                              sourceCount: settings.sources.count).canCompleteInitialConfiguration {
@@ -135,9 +152,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
     @objc private func requestPermission() {
-        guard installed else { return }
-        AccessibilityPermission.openSettings()
-        refreshPermission()
+        guard installed, permissionRequest == nil else { return }
+        beforeOpeningSystemSettings()
+        permissionButton.isEnabled = false
+        permissionRequest = Task { [weak self] in
+            await AccessibilityPermission.openSettings()
+            guard let self else { return }
+            self.permissionRequest = nil; self.permissionButton.isEnabled = true
+            self.refreshPermission()
+        }
     }
-    @objc private func openLoginItems() { launchAtLogin.openSystemSettings() }
+    @objc private func openLoginItems() {
+        beforeOpeningSystemSettings()
+        launchAtLogin.openSystemSettings()
+    }
 }

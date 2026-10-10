@@ -59,6 +59,79 @@ restarts. An expired request keeps its slot until the main queue drains it, so
 an indefinitely stalled main queue cannot collect expired capture callbacks.
 Monitor epochs reject callbacks from a stopped filter.
 
+Disabled taps are disconnected synchronously before diagnostics or UI callbacks:
+disable and invalidate the Mach port/source, cancel the pending capture decision,
+clear accepted-key pairing, and stop the worker run loop. Retirement is one-shot;
+late native setup is disconnected immediately and never re-enabled. A 500 ms
+permission check on a separate serial queue also retires a tap on observed trust
+loss. Neither AX trust queries nor UI progress are required by the disabled-event
+callback. Both adapters stop after a reported failure; Screen Sharing sampling
+stops too. The status keeps the error through late cancellation/restoration
+callbacks, until Settings verifies access and creates fresh filters. Existing
+clipboard-ownership cleanup remains in force; no late paste is replayed.
+
+Readiness gate for revocation: the risky assumption is that reporting a disabled
+tap is sufficient to release the system event stream. The local incident disproved
+that assumption for the old Screen Sharing path. Apple's
+[port invalidation contract](https://developer.apple.com/documentation/corefoundation/cfmachportinvalidate(_:))
+and [disabled-tap API](https://developer.apple.com/documentation/coregraphics/cgevent/tapenable(tap:enable:))
+provide external evidence for teardown. A local spike invalidates an owned real
+Mach port and run-loop source before the UI callback, with no global tap or TCC
+change. Regression tests cover pending admission, accepted key-up, duplicate
+disabled events and stop-before-creation. The installed 113.1.1 candidate failed
+the physical revocation test even after both native teardown calls returned.
+Mocked trust and a disposable port are not proof of WindowServer recovery.
+
+`PermissionMonitoringGuard` therefore retires both monitors **before** opening
+System Settings, including activation from outside the helper. It also guards
+startup, source changes and the hidden helper Settings timer against recreation
+while the permission pane is active. A direct button request stays suspended
+through launch. On leaving, permission is checked before fresh monitoring can
+start; a missing grant retains the error. Ordinary local/remote focus changes do
+not rebuild taps. A paused-state timer updates the permission status; it does not
+poll on the event thread. Existing clipboard cleanup still owns any interrupted
+Screen Sharing transfer.
+
+The risky assumption for this precaution is that removing taps *before* an
+interactive revocation avoids the failing WindowServer transition. There is a
+matching [first-hand report on Apple's developer forum](https://developer.apple.com/forums/thread/844416);
+Apple DTS requested a system diagnostic but did not publish a fix there. This is
+external incident evidence, not an Apple guarantee about our workaround. Local
+state-transition tests establish no recreation while guarded; a read-only native
+tap inventory must confirm that the installed process owns zero taps in System
+Settings before another coordinated revocation test. Revocation outside that UI,
+for example by device management while a remote window stays active, is not
+covered by the pre-entry guard. Do not claim it is universally freeze-proof.
+
+Permission consumers read a short-lived RAM snapshot from
+`AccessibilityAccessMonitor`. A utility queue starts one fresh copy of the
+signed executable once per second. It runs `AXIsProcessTrusted` before any app
+initialization and returns only an exit status. A 750 ms deadline kills/reaps
+that owned child; a child-side one-second deadline also prevents an orphaned
+check from waiting indefinitely if the parent exits. No OS permission IPC runs
+on an input callback or the main actor. The snapshot expires after two seconds, and entering/leaving the
+permission pane invalidates earlier generations. Unknown results never
+authorize input. Only the user's button may spawn the request mode using
+`AXIsProcessTrustedWithOptions`; the native alert owns navigation. AX does not
+distinguish a disabled entry from a removed one, so both take this request path.
+Already granted access opens the pane directly. Settings reads readiness without
+creating taps; failed native setup is not retried by its status timer.
+Its permission label reflects the grant alone, so an intentional monitoring pause
+in System Settings does not replace green `Allowed ✓` with an input error.
+
+Readiness gate: AX/CG preflight queries were assumed to reflect a removed grant.
+The 113.1.2 trial disproved this. A
+[Chromium investigation](https://chromium.googlesource.com/chromium/src/+/7474294381a3b199f2ecc66ed892c1e48ee1f970)
+suggested a HID query instead, but our installed 113.1.3 trial retained stale
+positive and negative HID results as well. That local failure overrides the
+generic external evidence. The fresh-process design assumes the same signed
+executable observes current AX permission under the same app identity. Child
+lifecycle and injected state transitions are tested. The owner completed an
+installed remove/request/regrant cycle on 113.1.5 without a parent restart;
+logs recorded the new grant while System Settings was still foreground. This is
+local integration proof for that cycle, not a guarantee across every macOS/TCC
+configuration. See the investigation record for actual trial outcomes.
+
 Readiness gate: workspace activation notifications are Apple's external API
 contract ([reference](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)).
 Local component checks exercise cached refusal, foreground/sleep/wake/stop/restart,

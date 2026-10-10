@@ -28,7 +28,11 @@ func expectThrows<T>(_ value: @autoclosure () throws -> T, _ message: String = "
 @main
 struct TestRunner {
     @MainActor static func main() async throws {
-        if ClipboardReaderProcess.runIfRequested() || runClipboardProviderFixture() { return }
+        // A default monitor reached by another fixture must never turn this
+        // runner into a recursive suite or ask for real TCC permissions.
+        if let first = CommandLine.arguments.dropFirst().first,
+           [AccessibilityProbeProcess.checkArgument, AccessibilityProbeProcess.requestArgument].contains(first) { exit(3) }
+        if runAccessibilityProbeFixture() || ClipboardReaderProcess.runIfRequested() || runClipboardProviderFixture() { return }
         try await testIsolatedClipboardReading()
         try await testAsyncCaptureAndExpiredDecision()
         if CommandLine.arguments.contains("--isolation-only") { return }
@@ -44,7 +48,12 @@ struct TestRunner {
         try await testBlockedAdmissionLiveness()
         try await testLateAdmissionCannotReplay()
         testSettingsReadiness()
-        testAccessibilitySettingsNavigation()
+        await testAccessibilitySettingsNavigation()
+        try await testLiveAccessibilityAccess()
+        try await testAccessibilityProbeProcess()
+        try testPermissionRevocationSafety()
+        testPermissionSettingsGuard()
+        try await testDisabledScreenSamplerStops()
         try testLaunchAtLogin()
         try testOperationalLog()
         try testDiagnosticLogStorage()

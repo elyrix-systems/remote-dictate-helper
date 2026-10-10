@@ -1,6 +1,26 @@
 # Changelog
 
-## Unreleased
+## 1.1.4 — 2026-10-10
+
+- Pause input interception before Accessibility changes in System Settings to
+  prevent the input freeze reproduced when removing the helper's permission.
+  Disconnect disabled input taps and resume only after leaving System Settings
+  with access granted.
+- Recognize removed and regranted Accessibility access without restarting the
+  helper. Run bounded permission checks outside the input and interface threads;
+  request access again when the permission entry has been removed.
+- Keep the green Allowed status visible when access is granted, including while
+  interception is safely paused in System Settings.
+- Show the installed version and build number at the bottom of Settings.
+
+Validation: the owner completed removal, a new request and regrant on local build
+113.1.5 without restarting the helper; mouse and keyboard input remained usable.
+Regression checks cover tap teardown, guarded restart, permission freshness and
+bounded permission-check processes. The precaution covers interactive changes
+in System Settings; it is not proof against every external permission-revocation
+path. Paste and clipboard restoration behavior are unchanged. Separate reports
+of intermittent dictation-app pauses remain under investigation. Downloads remain
+ad-hoc signed and not Apple notarized.
 
 ## 1.1.3 — 2026-10-10
 

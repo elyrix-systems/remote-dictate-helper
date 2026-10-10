@@ -11,7 +11,7 @@ enum DictationCaptureError: Error, CustomStringConvertible {
         case .inputChanged: "Input changed during capture; no deferred paste."
         case .releaseTimeout: "The dictation app did not release its clipboard before the deadline. No replay was sent."
         case .pasteKeyUpTimeout: "The dictation app's paste key release was not observed. No replay was sent."
-        case .filterDisabled: "macOS disabled paste interception. Quit and reopen Remote Dictate Helper."
+        case .filterDisabled: "Paste interception stopped. Check Accessibility in Settings."
         case .captureTooSlow: "Clipboard capture was too slow for interception; original input was allowed through."
         }
     }
@@ -94,7 +94,8 @@ final class DictationPasteMonitor {
         let token = filterEpoch
         let next = PasteEventFilter(sources: sources, onEvent: { [weak self] input, decision in
             let deliver: PasteAdmissionQueue.Work = {
-                guard let self, self.filter != nil, self.filterEpoch == token else { decision?.resolve(false); return }
+                guard let self, let filter = self.filter, !filter.isStopped,
+                      self.filterEpoch == token else { decision?.resolve(false); return }
                 self.handle(input, decision: decision)
             }
             if let decision { PasteAdmissionQueue.shared.submit(decision, work: deliver) }
@@ -130,31 +131,34 @@ final class DictationPasteMonitor {
     }
 
     func stop() {
+        filter?.stop(); filter = nil
         filterEpoch = UUID()
         if let pending { trace(pending, "stop; no replay") }
         generation += 1
         sampleTask?.cancel(); sampleTask = nil
         captureTask?.cancel(); captureTask = nil
         timer?.invalidate(); timer = nil
-        filter?.stop(); filter = nil
         targetScope.stop()
         pending = nil; suppressedPID = nil; history.clear(); sampledTargetPID = nil
     }
 
     func filterDisabled() {
+        guard filterHealthy else { return }
+        filter?.stop(); filter = nil
+        filterEpoch = UUID()
         captureTask?.cancel(); captureTask = nil
         filterHealthy = false; suppressedPID = nil
+        setSamplingActive(false)
+        targetScope.stop()
         if pending != nil { pending?.failure = DictationCaptureError.filterDisabled }
-        // Never silently enable deletion or re-enable an unhealthy filter.
-        Task { @MainActor [weak self] in
-            self?.report("active paste filter disabled by macOS; input passes through")
-            self?.onError(DictationCaptureError.filterDisabled)
-        }
+        report("active paste filter disconnected after macOS disabled it")
+        onError(DictationCaptureError.filterDisabled)
     }
 
     /// The timer never calls an external data provider. One asynchronous sample
     /// at a time; failed revisions are not retried every 20 ms.
     func scheduleSample() {
+        guard filterHealthy else { return }
         if suppressedPID != nil, now() - suppressedAt > 5 { suppressedPID = nil }
         guard pending == nil, captureTask == nil else { return }
         guard isAvailable(), let target = targetPID() else {
@@ -375,6 +379,7 @@ final class DictationPasteMonitor {
         }
     }
     func validate(_ id: UUID) throws {
+        guard filterHealthy, filter?.isStopped != true else { throw DictationCaptureError.filterDisabled }
         guard let current = pending, current.id == id else { throw CancellationError() }
         if let failure = current.failure { throw failure }
         // The filter updates this on its own thread, even while AX menu polling

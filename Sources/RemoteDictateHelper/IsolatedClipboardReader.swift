@@ -75,8 +75,13 @@ final class IsolatedClipboardReader: Sendable {
     private let queue = DispatchQueue(label: "systems.elyrix.RemoteDictateHelper.isolated-clipboard", qos: .userInitiated)
     private let slot = DispatchSemaphore(value: 1)
     private let executable: URL
+    private let onAdmitted: (@Sendable () -> Void)?
 
-    init(executable: URL = Bundle.main.executableURL!) { self.executable = executable }
+    /// Optional instrumentation lets component tests await actual reader
+    /// admission. Production leaves it nil; no callback runs under a lock.
+    init(executable: URL = Bundle.main.executableURL!, onAdmitted: (@Sendable () -> Void)? = nil) {
+        self.executable = executable; self.onAdmitted = onAdmitted
+    }
 
     func read(name: NSPasteboard.Name, revision: Int, textOnly: Bool = false,
               includeDiagnosticText: Bool = false,
@@ -84,6 +89,7 @@ final class IsolatedClipboardReader: Sendable {
         try Task.checkCancellation()
         guard reserve() else { throw IsolatedClipboardError.busy }
         let request = Request(timeout: timeout)
+        onAdmitted?()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 queue.async { [executable, slot] in

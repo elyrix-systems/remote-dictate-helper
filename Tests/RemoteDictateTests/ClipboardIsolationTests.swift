@@ -71,13 +71,16 @@ func testIsolatedClipboardReading() async throws {
     // Check progress by ordering, not by requiring three timer ticks inside an
     // 80 ms wall-clock window on a shared CI runner. If prepare blocks the main
     // actor, this test cannot resume until the read has already finished.
-    var readStarted = false, readFinished = false
+    let (admitted, admission) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    let progressAccess = ClipboardAccess(reader: isolationTestReader(onAdmitted: { _ = admission.yield(()) }))
+    var readFinished = false
     let pendingRead = Task { @MainActor in
-        readStarted = true
-        defer { readFinished = true }
-        try await access.prepare(board, timeout: 2)
+        defer { readFinished = true; admission.finish() }
+        try await progressAccess.prepare(board, timeout: 2)
     }
-    while !readStarted { await Task.yield() }
+    var admissionEvents = admitted.makeAsyncIterator()
+    let admissionEvent = await admissionEvents.next()
+    expectNotNil(admissionEvent, "The reader must reserve its slot before the progress assertion")
     expectFalse(readFinished, "Main actor must resume while clipboard I/O is still pending")
     pendingRead.cancel()
     do { try await pendingRead.value; fail("Cancelled pending read must not succeed") }
@@ -161,9 +164,10 @@ func testAsyncCaptureAndExpiredDecision() async throws {
     print("Asynchronous capture/release/restoration and expired event-tap decision passed")
 }
 
-private func isolationTestReader() -> IsolatedClipboardReader {
+private func isolationTestReader(onAdmitted: (@Sendable () -> Void)? = nil) -> IsolatedClipboardReader {
     if let executable = ProcessInfo.processInfo.environment["RD_TEST_READER_EXECUTABLE"] {
-        return IsolatedClipboardReader(executable: URL(fileURLWithPath: executable))
+        return IsolatedClipboardReader(executable: URL(fileURLWithPath: executable), onAdmitted: onAdmitted)
     }
+    if let onAdmitted { return IsolatedClipboardReader(onAdmitted: onAdmitted) }
     return .shared
 }

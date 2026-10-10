@@ -10,29 +10,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         set { sourceSettings.value = newValue; loadFields() }
     }
     private let sourceSettings: DictationSourceSettings
-    private let onPermissionGranted: () -> Bool
+    private let inputIsReady: () -> Bool
     private let beforeOpeningSystemSettings: () -> Void
     private let launchAtLogin: LaunchAtLogin
     private let loginStatus = NSTextField(labelWithString: "")
     private lazy var sourcesView = DictationSourcesView(sources: settings.sources, onChange: { [weak self] sources in
         guard let self else { throw CancellationError() }
         try self.sourceSettings.updateSources(sources)
-        self.previousTrust = false
         self.refreshPermission()
     })
     private let permissionStatus = NSTextField(labelWithString: "Not granted")
     private let permissionButton = NSButton(title: "Open Accessibility Settings…", target: nil, action: nil)
     private let installed = !Bundle.main.bundleURL.path.hasPrefix("/Volumes/")
     private var timer: Timer?
-    private var previousTrust = false
     private var inputReady = false
     private var permissionRequest: Task<Void, Never>?
 
     init(settings: AppSettings, launchAtLogin: LaunchAtLogin, onSave: @escaping (AppSettings) throws -> Void,
          beforeOpeningSystemSettings: @escaping () -> Void,
-         onPermissionGranted: @escaping () -> Bool) {
+         inputIsReady: @escaping () -> Bool) {
         self.sourceSettings = DictationSourceSettings(value: settings, persist: onSave)
-        self.onPermissionGranted = onPermissionGranted
+        self.inputIsReady = inputIsReady
         self.beforeOpeningSystemSettings = beforeOpeningSystemSettings
         self.launchAtLogin = launchAtLogin
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 450),
@@ -51,7 +49,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
-        previousTrust = false
         refreshPermission()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -128,14 +125,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         loginStatus.textColor = launchAtLogin.isEnabled ? .systemGreen : .secondaryLabelColor
         let access = AccessibilityPermission.state
         let trusted = access == .granted
-        if trusted && (!previousTrust || !inputReady) { inputReady = onPermissionGranted() }
-        if !trusted { inputReady = false }
-        previousTrust = trusted
+        inputReady = trusted && inputIsReady()
         switch access {
         case .checking: permissionStatus.stringValue = "Checking…"
         case .unavailable: permissionStatus.stringValue = "Unable to check access"
-        case .granted: permissionStatus.stringValue = inputReady ? "Allowed ✓" : "Preparing input…"
-        case .denied, .notRequested: permissionStatus.stringValue = "Not granted"
+        case .granted: permissionStatus.stringValue = inputReady ? "Allowed ✓" : "Input unavailable"
+        case .denied: permissionStatus.stringValue = "Not granted"
         }
         permissionStatus.textColor = trusted && inputReady ? .systemGreen : .secondaryLabelColor
         if !UserDefaults.standard.bool(forKey: Self.completionKey),

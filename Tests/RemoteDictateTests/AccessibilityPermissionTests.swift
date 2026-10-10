@@ -1,7 +1,7 @@
 // Only injected effects: never request or change the test runner's permissions.
 @MainActor
 func testAccessibilitySettingsNavigation() async {
-    var access: AccessibilityAccessState = .notRequested
+    var access: AccessibilityAccessState = .denied
     var requests = 0
     var openedPanes = 0
     let click = {
@@ -20,19 +20,17 @@ func testAccessibilitySettingsNavigation() async {
     expectEqual(requests, 2)
     expectEqual(openedPanes, 0)
 
-    for existing in [AccessibilityAccessState.granted, .denied] {
-        access = existing
-        await click()
-        expectEqual(requests, 2, "An existing entry is managed in System Settings")
-    }
-    expectEqual(openedPanes, 2)
+    access = .granted
+    await click()
+    expectEqual(requests, 2, "An existing grant is managed in System Settings")
+    expectEqual(openedPanes, 1)
     for unresolved in [AccessibilityAccessState.checking, .unavailable] {
         access = unresolved
         await click()
     }
-    expectEqual(requests, 2); expectEqual(openedPanes, 2)
+    expectEqual(requests, 2); expectEqual(openedPanes, 1)
 
-    access = .notRequested
+    access = .denied
     await AccessibilityPermission.openSettings(check: { access }, request: {
         requests += 1
         access = .granted

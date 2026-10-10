@@ -23,6 +23,7 @@ swiftc -swift-version 6 -parse-as-library -I "$test_module_dir" \
   "$runtime/PasteTargetScope.swift" \
   "$runtime/PermissionMonitoringGuard.swift" \
   "$runtime/AccessibilityAccessMonitor.swift" \
+  "$runtime/AccessibilityProbeProcess.swift" \
   "$runtime/MainQueueWatchdog.swift" \
   "$runtime/IsolatedClipboardReader.swift" \
   "$runtime/CapturedClipboard.swift" "$runtime/LocalClipboardRestoration.swift" \

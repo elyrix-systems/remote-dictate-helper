@@ -1,5 +1,4 @@
 import AppKit
-import IOKit.hidsystem
 
 enum AccessibilityPermission {
     /// Background checks must never request access or open a window.
@@ -20,13 +19,11 @@ enum AccessibilityPermission {
         }
     ) async {
         switch await check() {
-        case .granted, .denied:
-            // An existing denied entry needs the user's toggle, not another
-            // prompt. A granted entry still lets the user manage its permission.
+        case .granted:
             openPane()
-        case .notRequested:
-            // A deleted entry must be requested through the live HID API. The
-            // native alert alone owns navigation; never open a second pane.
+        case .denied:
+            // AX does not distinguish a disabled entry from a removed one.
+            // A fresh process requests either through the Accessibility API.
             await request()
         case .checking, .unavailable:
             break // Keep input stopped; never infer a grant from a failed check.
@@ -40,7 +37,7 @@ enum AccessibilityPermission {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             guard requestSlot.wait(timeout: .now()) == .success else { continuation.resume(); return }
             requestQueue.async {
-                _ = IOHIDRequestAccess(kIOHIDRequestTypePostEvent)
+                _ = AccessibilityProbeProcess.run(arguments: [AccessibilityProbeProcess.requestArgument])
                 invalidate()
                 requestSlot.signal()
                 continuation.resume()

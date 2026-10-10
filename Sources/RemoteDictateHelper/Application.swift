@@ -286,19 +286,21 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         setStatus(paste.didRun ? "Finishing: restoring clipboard" : "Error: input failed; restoring clipboard")
     }
     @objc private func openSettings() {
+        // An explicit Settings visit can retry a native setup failure. The UI's
+        // status timer below must not create a new pair of taps every second.
+        permissionGuard.refresh()
+        if !busy, inputMonitoringError != nil, permissionGuard.mayInstallFilters,
+           AccessibilityPermission.isTrusted() { configureMonitor() }
         guard !busy else { setStatus("Wait for the current transfer before changing settings"); return }
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController(settings: settings, launchAtLogin: launchAtLogin,
                 onSave: { [weak self] in try self?.saveSettings($0) },
                 beforeOpeningSystemSettings: { [weak self] in self?.permissionGuard.prepareToOpenSettings() },
-                onPermissionGranted: { [weak self] in
+                inputIsReady: { [weak self] in
                     guard let self, !self.busy, self.permissionGuard.mayInstallFilters else { return false }
-                    // A revoked grant can leave an existing event tap unusable.
-                    // Recreate it when Settings observes a grant, as first use did.
-                    self.lastError = nil; self.configureMonitor()
-                    let ready = self.monitor != nil && self.windowsMonitor != nil
-                    if ready { self.setStatus("Ready") }
-                    return ready
+                    // The permission guard creates monitors on a fresh grant.
+                    // Reading status must not retry a failed native creation.
+                    return self.inputMonitoringError == nil && self.monitor != nil && self.windowsMonitor != nil
                 })
         }
         if settingsWindowController?.window?.isVisible != true {
@@ -420,7 +422,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
 @main
 enum RemoteDictateEntry {
     @MainActor static func main() {
-        if ClipboardReaderProcess.runIfRequested() { return }
+        if AccessibilityProbeProcess.runIfRequested() || ClipboardReaderProcess.runIfRequested() { return }
         let application = NSApplication.shared
         let controller = RemoteDictateApp()
         application.setActivationPolicy(.accessory)

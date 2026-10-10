@@ -1,5 +1,4 @@
 import Foundation
-import IOKit.hidsystem
 
 private final class AccessCheckProbe: @unchecked Sendable {
     private let lock = NSLock()
@@ -37,10 +36,6 @@ private final class AccessCheckProbe: @unchecked Sendable {
 }
 
 @MainActor func testLiveAccessibilityAccess() async throws {
-    expectEqual(AccessibilityAccessState.fromNative(kIOHIDAccessTypeGranted), .granted)
-    expectEqual(AccessibilityAccessState.fromNative(kIOHIDAccessTypeDenied), .denied)
-    expectEqual(AccessibilityAccessState.fromNative(kIOHIDAccessTypeUnknown), .notRequested)
-
     let probe = AccessCheckProbe()
     let monitor = AccessibilityAccessMonitor(poll: false, now: { probe.now }, check: { probe.check() })
     expectEqual(monitor.state, .checking)
@@ -49,7 +44,7 @@ private final class AccessCheckProbe: @unchecked Sendable {
     expectFalse(probe.ranOnMain, "The live OS check must never run on the UI thread")
     probe.advance(3)
     expectEqual(monitor.state, .unavailable, "Expired permission cannot authorize native input")
-    for state in [AccessibilityAccessState.denied, .notRequested, .granted] {
+    for state in [AccessibilityAccessState.denied, .granted, .denied, .granted] {
         probe.configure(state)
         let refreshed = await monitor.refreshedState()
         expectEqual(refreshed, state)
@@ -77,5 +72,5 @@ private final class AccessCheckProbe: @unchecked Sendable {
         return blockedMonitor.state == .denied
     }
     expectEqual(blockedProbe.count, 2, "Invalidations coalesce into one fresh check")
-    print("Live Accessibility: native states, expiry, bounded blocked checks, stale-result refusal and async navigation; injected permissions only")
+    print("Live Accessibility: revoke/regrant, expiry, bounded blocked checks, stale-result refusal and async navigation; injected permissions only")
 }

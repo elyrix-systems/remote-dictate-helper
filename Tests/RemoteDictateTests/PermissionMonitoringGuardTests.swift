@@ -57,6 +57,22 @@ import AppKit
     activate("example.remote")
     expectEqual(creations, 3)
     guardrail.stop()
+    // Once native setup has failed, status polling must not turn repeated
+    // positive permission answers into repeated native tap creation attempts.
+    var liveTrust = true, attempts = 0
+    let recovery = PermissionMonitoringGuard(center: NotificationCenter(), front: { "example.local" },
+        trusted: { liveTrust }, invalidatePermission: {}) { state in
+        if state == .allowed { attempts += 1 }
+    }
+    recovery.start(poll: false)
+    for _ in 0..<1_000 { recovery.refresh() }
+    expectEqual(attempts, 1)
+    liveTrust = false; recovery.refresh()
+    expectFalse(recovery.mayInstallFilters)
+    liveTrust = true; recovery.refresh()
+    for _ in 0..<1_000 { recovery.refresh() }
+    expectEqual(attempts, 2, "A real revoke/regrant permits one new setup attempt")
+    recovery.stop()
     let count = states.count
     activate(PermissionMonitoringGuard.settingsBundle); guardrail.refresh(); guardrail.prepareToOpenSettings()
     expectEqual(states.count, count, "Stopped observers cannot recreate monitoring")

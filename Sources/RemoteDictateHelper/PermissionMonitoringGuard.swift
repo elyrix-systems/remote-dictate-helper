@@ -16,6 +16,7 @@ final class PermissionMonitoringGuard {
     private var timer: Timer?
     private var running = false
     private var awaitingSettings = false
+    private var wasInSystemSettings = false
     private(set) var state: State?
 
     init(center: NotificationCenter = NSWorkspace.shared.notificationCenter,
@@ -44,7 +45,7 @@ final class PermissionMonitoringGuard {
                     if launching {
                         if identifier == Self.settingsBundle { self.prepareToOpenSettings() }
                     } else {
-                        if self.state == .systemSettings || self.awaitingSettings { self.invalidatePermission() }
+                        if self.awaitingSettings { self.invalidatePermission() }
                         self.awaitingSettings = false; self.refresh()
                     }
                 }
@@ -53,9 +54,9 @@ final class PermissionMonitoringGuard {
         if poll {
             let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    // Active taps already check trust off the UI thread. Here
-                    // only watch the paused UI, where no tap depends on progress.
-                    guard let self, self.state != .allowed else { return }
+                    // RAM-only permission state also detects revoke/regrant
+                    // when a failed tap no longer has its own permission timer.
+                    guard let self else { return }
                     self.refresh()
                 }
             }
@@ -69,6 +70,7 @@ final class PermissionMonitoringGuard {
         observers.forEach { center.removeObserver($0) }; observers.removeAll()
         state = nil
         awaitingSettings = false
+        wasInSystemSettings = false
     }
 
     /// Called synchronously before our own button opens the permission pane.
@@ -83,6 +85,8 @@ final class PermissionMonitoringGuard {
         guard running else { return }
         // Retire native taps before making a permission query on Settings entry.
         let inSettings = front() == Self.settingsBundle
+        if wasInSystemSettings && !inSettings { invalidatePermission() }
+        wasInSystemSettings = inSettings
         if inSettings { awaitingSettings = false }
         if inSettings || awaitingSettings {
             if state == .allowed || state == nil { update(.systemSettings); invalidatePermission() }

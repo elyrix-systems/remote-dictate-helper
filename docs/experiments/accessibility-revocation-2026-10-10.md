@@ -129,3 +129,37 @@ with the same designated signing requirement. The full regression suite and
 privacy scan passed. Its first live HID check reported granted; native inventory
 showed exactly two taps. Opening System Settings removed both and the inventory
 reported zero. The deleted-entry status/request/regrant trial remains pending.
+
+## Live HID query trial failed: 113.1.3
+
+The owner then removed the row. Input stayed usable, but Settings showed
+`Preparing input`: HID checks continued returning granted while native tap
+creation failed. The Settings timer incorrectly retried creation every second.
+After the owner restarted the helper and used its request dialog to grant access,
+HID checks instead remained denied and Settings remained `Not granted`. This
+invalidates the claim that the HID preflight is a live authority on this Mac.
+The retained request API was also the HID/PostEvent API, not an AX trust request.
+
+The next candidate uses a fresh process of the same signed executable to check
+AX trust and a separate explicit mode to request it. Each check is bounded and
+reaped, with no child UI initialization or clipboard access. Only state changes
+or an explicit Settings visit may retry setup; UI status polling is read-only.
+Tests cover subprocess failure/reaping, fresh state transitions, invalidation,
+navigation and the absence of repeated native setup on unchanged permission.
+The installed app's identity attribution and full revoke/regrant cycle require
+physical validation; another app's or a command-line tool's result is not proof.
+
+The signed **113.1.4** candidate then checked the permission from its own child
+process. It reported granted, created both native taps and remained responsive,
+with no new permission change requested from the owner. This repairs the
+reported inability to recognize the already regranted access. It does not yet
+establish a full revoke/regrant cycle without restarting the parent. The next
+build adds an independent one-second child exit deadline so a parent quit cannot
+leave a blocked permission checker indefinitely alive. Tests cover this deadline
+separately from parent-enforced timeout and reaping.
+
+The final local **113.1.5** build passed the complete tests and privacy scan and
+was installed with the same certificate. It read the existing grant and created
+two native taps; opening System Settings removed both. Native inventory confirmed
+zero while that pane was foreground. No additional permission grant was needed
+for this installation. The no-restart remove/request/regrant trial is pending.

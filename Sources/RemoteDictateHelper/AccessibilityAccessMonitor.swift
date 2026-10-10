@@ -1,22 +1,12 @@
 import Foundation
-import IOKit.hidsystem
 
 enum AccessibilityAccessState: Equatable, Sendable {
-    case checking, granted, denied, notRequested, unavailable
-
-    static func fromNative(_ value: IOHIDAccessType) -> Self {
-        switch value {
-        case kIOHIDAccessTypeGranted: .granted
-        case kIOHIDAccessTypeDenied: .denied
-        case kIOHIDAccessTypeUnknown: .notRequested
-        default: .unavailable
-        }
-    }
+    case checking, granted, denied, unavailable
 }
 
-/// IOHIDCheckAccess may wait on tccd. Only one check can be outstanding, on a
-/// dedicated queue; UI/input consumers read RAM and fail closed on stale data.
-/// AXIsProcessTrusted/CGPreflightPostEventAccess can retain a revoked grant.
+/// Permission IPC runs in one bounded child on a dedicated queue. UI/input
+/// consumers read RAM and fail closed on stale data. Even the HID preflight
+/// retained stale granted/denied answers in the signed local trial.
 final class AccessibilityAccessMonitor: @unchecked Sendable {
     static let shared = AccessibilityAccessMonitor()
     private let queue = DispatchQueue(label: "systems.elyrix.RemoteDictateHelper.access-check", qos: .utility)
@@ -33,12 +23,12 @@ final class AccessibilityAccessMonitor: @unchecked Sendable {
     init(poll: Bool = true, freshness: TimeInterval = 2,
          now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          check: @escaping @Sendable () -> AccessibilityAccessState = {
-             .fromNative(IOHIDCheckAccess(kIOHIDRequestTypePostEvent))
+             AccessibilityProbeProcess.run()
          }) {
         self.freshness = freshness; self.now = now; self.check = check
         if poll {
             let timer = DispatchSource.makeTimerSource(queue: queue)
-            timer.schedule(deadline: .now(), repeating: 0.5)
+            timer.schedule(deadline: .now(), repeating: 1)
             timer.setEventHandler { @Sendable [weak self] in self?.requestCheck() }
             self.timer = timer; timer.resume()
         }

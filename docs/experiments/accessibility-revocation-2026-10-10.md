@@ -51,5 +51,10 @@ The signed local candidate **1.1.3 / build 113.1.1** was installed after normal
 Quit, using the saved local certificate. The replaced public ad-hoc copy was
 backed up privately. On launch it observed no Accessibility access, created no
 input filters and logged the paused/error state. It did not request access in
-the background. The owner must grant access explicitly in Settings before the
-installed revocation/regrant check can be performed.
+the background.
+
+The owner then removed the stale Accessibility entry and granted access to the
+installed candidate. Settings showed `Allowed`, and physical keyboard/mouse
+input remained responsive. At 10:34:19 UTC both client filters were installed
+successfully. This confirms recovery from an initially untrusted installation;
+it does not yet test revoking access while the candidate's filters are active.

@@ -33,11 +33,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.inputIsReady = inputIsReady
         self.beforeOpeningSystemSettings = beforeOpeningSystemSettings
         self.launchAtLogin = launchAtLogin
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 450),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 474),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Remote Dictate Helper Settings"
         // One settings pane with a stable size; only the app list scrolls.
-        window.contentMinSize = NSSize(width: 540, height: 450)
+        window.contentMinSize = NSSize(width: 540, height: 474)
         window.contentMaxSize = window.contentMinSize
         window.isReleasedWhenClosed = false
         window.center()
@@ -93,6 +93,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let privacy = NSTextField(labelWithString: "The helper does not record audio or upload your clipboard.")
         privacy.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         privacy.textColor = .secondaryLabelColor
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+        let buildLabel = NSTextField(labelWithString: "Version \(version) · Build \(build)")
+        buildLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        buildLabel.textColor = .secondaryLabelColor
+        buildLabel.alignment = .right
+        buildLabel.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(buildLabel)
         let body = NSStackView(views: [scope, permissionHeading, permissionDetail, permissionRow, loginHeading, loginRow,
                                        heading, explanation, sourcesView, privacy])
         body.orientation = .vertical; body.alignment = .leading; body.spacing = 8
@@ -113,7 +121,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             permissionDetail.widthAnchor.constraint(equalTo: body.widthAnchor),
             explanation.widthAnchor.constraint(equalTo: body.widthAnchor),
             sourcesView.widthAnchor.constraint(equalTo: body.widthAnchor),
-            body.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -20)
+            body.bottomAnchor.constraint(lessThanOrEqualTo: buildLabel.topAnchor, constant: -8),
+            buildLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
+            buildLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
+            buildLabel.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16)
         ])
     }
     private func loadFields() {

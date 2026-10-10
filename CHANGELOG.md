@@ -1,16 +1,26 @@
 # Changelog
 
-## Unreleased
+## 1.1.4 — 2026-10-10
 
-- Immediately disconnect input taps when macOS disables them or Accessibility
-  is revoked. Cancel pending capture, stop both client monitors and show a
-  persistent permission/interception error instead of leaving a disabled tap
-  installed. Keep active-tap permission polling off the input and UI threads.
-- Suspend input monitoring before opening Accessibility settings and whenever
-  System Settings becomes active. Do not recreate taps behind the permission
-  pane; resume after leaving only if access is still granted. The earlier
-  teardown-only candidate did not prevent a system-wide freeze in a local
-  revocation test; this additional precaution requires local verification.
+- Pause input interception before Accessibility changes in System Settings to
+  prevent the input freeze reproduced when removing the helper's permission.
+  Disconnect disabled input taps and resume only after leaving System Settings
+  with access granted.
+- Recognize removed and regranted Accessibility access without restarting the
+  helper. Run bounded permission checks outside the input and interface threads;
+  request access again when the permission entry has been removed.
+- Keep the green Allowed status visible when access is granted, including while
+  interception is safely paused in System Settings.
+- Show the installed version and build number at the bottom of Settings.
+
+Validation: the owner completed removal, a new request and regrant on local build
+113.1.5 without restarting the helper; mouse and keyboard input remained usable.
+Regression checks cover tap teardown, guarded restart, permission freshness and
+bounded permission-check processes. The precaution covers interactive changes
+in System Settings; it is not proof against every external permission-revocation
+path. Paste and clipboard restoration behavior are unchanged. Separate reports
+of intermittent dictation-app pauses remain under investigation. Downloads remain
+ad-hoc signed and not Apple notarized.
 
 ## 1.1.3 — 2026-10-10
 

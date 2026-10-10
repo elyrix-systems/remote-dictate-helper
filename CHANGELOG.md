@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Immediately disconnect input taps when macOS disables them or Accessibility
+  is revoked. Cancel pending capture, stop both client monitors and show a
+  persistent permission/interception error instead of leaving a disabled tap
+  installed. Keep permission polling off the input and UI threads.
+
 ## 1.1.3 — 2026-10-10
 
 - Improve stability during extended use by removing unnecessary queued work for

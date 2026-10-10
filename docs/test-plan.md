@@ -23,6 +23,7 @@ The custom native runner works with Command Line Tools without XCTest.
 | Interception | Manual/local/unknown input passes through; accepted down/up pairing; slow capture and disabled filter fail safely; no deletion. |
 | Input-filter liveness | Blocked source lookup/admission returns within the capture budget, bounds outstanding work across filter restarts and cannot capture late; ordinary/manual/self input skips source lookup; stalled admission in both adapters cannot schedule input or a clipboard read after expiry. No real events posted. |
 | Local-input isolation | 60,000 ordinary events enqueue no callback while preserving cancellation counters; 1,000 local synthetic pastes bypass identity/admission; accepted V-up remains paired after focus loss. 20,000 expired admissions retain one queued block and recover. Workspace scope start/stop/sleep/wake, baseline timer suspension and a bounded independent main-queue heartbeat use fake notifications/queues and a named board. |
+| Permission revocation | Timeout/user-disabled callbacks synchronously invalidate an owned Mach port and source before notification. Duplicate callbacks, matched key-up and new keyboard/mouse events pass after retirement; injected trust loss withdraws pending acceptance. Late creation disconnects immediately. Screen Sharing sampling stops and reports once. No global input tap or TCC change. |
 | Shared source contract | Real event classification into both client monitors for Flow, superwhisper, Valis and a custom source; main/helper bundle IDs, consecutive captures and both clipboard-return policies. Removed/disabled sources pass through. No running dictation apps required. |
 | Clipboard | Full-format original restoration, UTF-8 HTML transport, empty originals, clipboard ownership, newer/equal-text copies and restoration deadlines. |
 | Input | Exactly one private Command+V; permission/target/modifier refusal; mid-sequence release; HID residue guards and no retry. |
@@ -119,6 +120,18 @@ lookup/read should follow local pastes. Screen Sharing baseline reads should
 stop until returning to its window. Keep the diagnostic build through ordinary
 extended use; if a stall recurs, preserve process samples **before** restarting
 the source/helper when practical. Heartbeat delay alone is not a root-cause proof.
+
+## Accessibility revocation integration check
+
+On an explicitly coordinated local test with recovery access available, revoke
+the running helper's Accessibility grant. Ordinary mouse and keyboard input must
+remain responsive, both filters must stop, and the menu must retain an error
+directing the user to Settings. Check both removing the entry and turning it off.
+Regrant access and reopen helper Settings; require fresh filters and a successful
+ordinary copy/paste before a dictation. A mid-transfer test must also verify local
+clipboard restoration and the original Screen Sharing connection's sharing state.
+Do not revoke the user's permission unattended, reset TCC, or infer this physical
+result from the automated disposable-port tests.
 
 ## Windows App physical checks
 

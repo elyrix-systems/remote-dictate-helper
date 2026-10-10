@@ -59,6 +59,29 @@ restarts. An expired request keeps its slot until the main queue drains it, so
 an indefinitely stalled main queue cannot collect expired capture callbacks.
 Monitor epochs reject callbacks from a stopped filter.
 
+Disabled taps are disconnected synchronously before diagnostics or UI callbacks:
+disable and invalidate the Mach port/source, cancel the pending capture decision,
+clear accepted-key pairing, and stop the worker run loop. Retirement is one-shot;
+late native setup is disconnected immediately and never re-enabled. A 500 ms
+permission check on a separate serial queue also retires a tap on observed trust
+loss. Neither AX trust queries nor UI progress are required by the disabled-event
+callback. Both adapters stop after a reported failure; Screen Sharing sampling
+stops too. The status keeps the error through late cancellation/restoration
+callbacks, until Settings verifies access and creates fresh filters. Existing
+clipboard-ownership cleanup remains in force; no late paste is replayed.
+
+Readiness gate for revocation: the risky assumption is that reporting a disabled
+tap is sufficient to release the system event stream. The local incident disproved
+that assumption for the old Screen Sharing path. Apple's
+[port invalidation contract](https://developer.apple.com/documentation/corefoundation/cfmachportinvalidate(_:))
+and [disabled-tap API](https://developer.apple.com/documentation/coregraphics/cgevent/tapenable(tap:enable:))
+provide external evidence for teardown. A local spike invalidates an owned real
+Mach port and run-loop source before the UI callback, with no global tap or TCC
+change. Regression tests cover pending admission, accepted key-up, duplicate
+disabled events and stop-before-creation. Actual permission removal while the
+installed app runs remains a controlled local integration check; mocked trust
+and a disposable port are not proof of WindowServer recovery.
+
 Readiness gate: workspace activation notifications are Apple's external API
 contract ([reference](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)).
 Local component checks exercise cached refusal, foreground/sleep/wake/stop/restart,

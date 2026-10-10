@@ -15,6 +15,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     private var operationGeneration = 0
     private var settingsWindowController: SettingsWindowController?
     private var lastError: String?
+    private var inputMonitoringError: String?
     private var clipboardSession: LocalClipboardRestoration.Session?
     private var sharedClipboardLease: SharedClipboardTransferLease?
     private var sharedClipboardDriver: ScreenSharingClipboardMenu?
@@ -28,7 +29,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         runningTask != nil || sharedClipboardLease != nil || clipboardRestoration.hasPendingRestore || clipboardSession != nil
             || windowsMonitor?.isBusy == true
     }
-    private var canAcceptPaste: Bool { !quitAfterClipboardRestore && !busy }
+    private var canAcceptPaste: Bool { inputMonitoringError == nil && !quitAfterClipboardRestore && !busy }
     private lazy var clipboardRestoration = LocalClipboardRestoration(onOutcome: { [weak self] outcome, receipt in
         guard let self else { return }
         self.appendLog("local clipboard restore outcome=\(outcome.rawValue)")
@@ -126,6 +127,8 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         monitor?.stop(); monitor = nil
         windowsMonitor?.stop(); windowsMonitor = nil
         guard !quitAfterClipboardRestore else { return }
+        guard AccessibilityPermission.isTrusted() else { stopInputMonitoring(); return }
+        inputMonitoringError = nil
         let next = DictationPasteMonitor(targetPID: {
             let app = NSWorkspace.shared.frontmostApplication
             return app?.bundleIdentifier == "com.apple.ScreenSharing" ? app?.processIdentifier : nil
@@ -135,12 +138,15 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
             guard let self, let monitor = self.monitor else { return }
             self.startPaste(id, monitor: monitor)
         }, onError: { [weak self] error in
+            if case DictationCaptureError.filterDisabled = error {
+                self?.stopInputMonitoring(); return
+            }
             self?.lastError = String(describing: error)
             self?.setStatus("Error: \(error)")
             self?.appendLog("capture error=\(error)")
         }, report: { [weak self] in self?.appendLog("capture \($0)") })
         do { try next.start(); monitor = next }
-        catch { lastError = String(describing: error); setStatus("Error: \(error)"); appendLog("monitor start error=\(error)") }
+        catch { appendLog("monitor start error=\(error)"); stopInputMonitoring(); return }
         let windows = WindowsAppPasteMonitor(sources: settings.sources,
             isAvailable: { [weak self] in self?.canAcceptPaste ?? false },
             onCaptured: { [weak self] in
@@ -152,12 +158,22 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
                 case .failure(is CancellationError): self.setStatus("Idle")
                 case .failure(WindowsAppPasteError.targetChanged), .failure(WindowsAppPasteError.inputChanged):
                     self.setStatus("Idle")
+                case .failure(WindowsAppPasteError.unavailable): self.stopInputMonitoring()
                 case let .failure(error):
                     self.lastError = String(describing: error); self.setStatus("Error: \(error)")
                 }
             }, report: { [weak self] in self?.appendLog($0) })
         do { try windows.start(); windowsMonitor = windows }
-        catch { lastError = String(describing: error); setStatus("Error: \(error)"); appendLog("Windows App monitor start error=\(error)") }
+        catch { appendLog("Windows App monitor start error=\(error)"); stopInputMonitoring() }
+    }
+    private func stopInputMonitoring() {
+        // This UI cleanup follows native tap disconnection. No UI work is
+        // required to release input; both clients and pending replay are stopped.
+        inputMonitoringError = "Error: dictation paused — check Accessibility in Settings"
+        lastError = inputMonitoringError
+        cancelCurrentOperation()
+        setStatus(inputMonitoringError!)
+        appendLog("input monitoring stopped; both filters removed; check Accessibility")
     }
     private func startPaste(_ id: UUID, monitor: DictationPasteMonitor) {
         guard canAcceptPaste else { monitor.discard(id); return }
@@ -269,9 +285,12 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         } catch { lastError = "Settings save failed"; setStatus("Error: settings save failed"); throw error }
     }
     private func setStatus(_ message: String) {
+        // Late cancellation/clipboard cleanup must not overwrite this error
+        // with Idle or Done. Settings recreates filters after a verified grant.
+        let message = inputMonitoringError ?? message
         statusMenuItem.title = message.count > 80 ? String(message.prefix(77)) + "…" : message
         let attention: Bool
-        if sharingCompletion.hasPendingCompletion { attention = true }
+        if inputMonitoringError != nil || sharingCompletion.hasPendingCompletion { attention = true }
         else if clipboardRestoration.hasPendingRestore || sharedClipboardLease != nil { attention = false }
         else { attention = message.hasPrefix("Error") }
         statusItem.button?.title = ""

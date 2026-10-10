@@ -45,6 +45,8 @@ struct TestRunner {
         try await testLateAdmissionCannotReplay()
         testSettingsReadiness()
         testAccessibilitySettingsNavigation()
+        try testPermissionRevocationSafety()
+        try await testDisabledScreenSamplerStops()
         try testLaunchAtLogin()
         try testOperationalLog()
         try testDiagnosticLogStorage()

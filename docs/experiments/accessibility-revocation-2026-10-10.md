@@ -69,6 +69,9 @@ The process was no longer running when the report was inspected; no frozen
 process sample or native tap inventory was captured. The user-visible failure
 invalidates any inference that those successful teardown calls alone restore
 system input. No additional permission removal was performed automatically.
+The owner subsequently clarified the order: terminate the helper over SSH,
+recover physical input, then report the failure. The absent process was the
+result of manual recovery, not evidence of automatic protection.
 
 A separate developer reported the same system-wide symptom with a minimal
 pass-through tap in [Apple's developer forum](https://developer.apple.com/forums/thread/844416).

@@ -14,6 +14,10 @@ there is no separate setup dialog or shared-clipboard checkbox. Permissions cann
 by an installer. No helper or microphone
 configuration is installed on the remote computer.
 
+If macOS hides the helper's icon in a crowded menu bar, open the running app
+again from Applications, Spotlight or a pinned Dock shortcut. It brings the
+same Settings window forward; no second helper process or setup dialog is needed.
+
 The installed app automatically registers itself to launch at login on first use,
 using Apple's main-app login service. Settings shows its current status and opens
 macOS Login Items for approval or changes. Disabling it there survives updates.

@@ -165,7 +165,9 @@ ID signing, and [contributing](CONTRIBUTING.md) to submit a change.
    and the dictation app list. Grant Accessibility in
    **System Settings → Privacy & Security → Accessibility** when requested. The
    helper checks the grant when you return; you can reopen **Settings…** from its
-   microphone-and-window menu bar icon at any time. No Microphone, Screen Recording,
+   microphone-and-window menu bar icon at any time. If that icon is hidden,
+   open Remote Dictate Helper again from Applications or Spotlight to show Settings.
+   No Microphone, Screen Recording,
    Full Disk Access or System Events Automation permission is requested by this app.
 3. In that same window, choose your dictation apps. Changes save immediately. Wispr Flow,
    superwhisper and Valis are included for new

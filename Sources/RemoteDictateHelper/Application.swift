@@ -88,6 +88,13 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         runningTask?.cancel(); monitor?.stop(); windowsMonitor?.stop()
         diagnosticContext.stop(); DiagnosticLog.shared.flush()
     }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // Finder/Spotlight/Dock reopening must reach Settings even if macOS has
+        // hidden the status item because the menu bar is full.
+        appendLog("Settings requested by reopening application")
+        openSettings()
+        return false // We handled presentation; AppKit need not reopen another window.
+    }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         permissionGuard.stop()
         cancelCurrentOperation()
@@ -98,6 +105,9 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         return .terminateLater
     }
     private func configureMenu() {
+        // Let macOS retain the user's position across launches. Placement cannot
+        // override the system menu bar's available space (including the notch).
+        statusItem.autosaveName = "RemoteDictateHelperStatusItem"
         statusItem.button?.title = ""
         statusItem.button?.image = BrandIcon.menuImage()
         statusItem.button?.setAccessibilityLabel("Remote Dictate Helper")
@@ -306,7 +316,9 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         if settingsWindowController?.window?.isVisible != true {
             settingsWindowController?.settings = settings
         }
-        settingsWindowController?.showWindow(nil); NSApp.activate(ignoringOtherApps: true)
+        settingsWindowController?.showWindow(nil)
+        settingsWindowController?.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
     private func saveSettings(_ updated: AppSettings) throws {
         guard !busy else {

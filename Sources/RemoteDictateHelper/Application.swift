@@ -301,7 +301,10 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         permissionGuard.refresh()
         if !busy, inputMonitoringError != nil, permissionGuard.mayInstallFilters,
            AccessibilityPermission.isTrusted() { configureMonitor() }
-        guard !busy else { setStatus("Wait for the current transfer before changing settings"); return }
+        // A user-requested Settings window remains reachable during a transfer.
+        // Source-list edits still fail in saveSettings while busy, and monitor
+        // recreation above remains idle-only. The existing focus/cancellation
+        // and restoration guards handle leaving the remote window normally.
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController(settings: settings, launchAtLogin: launchAtLogin,
                 onSave: { [weak self] in try self?.saveSettings($0) },

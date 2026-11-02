@@ -17,6 +17,9 @@ configuration is installed on the remote computer.
 If macOS hides the helper's icon in a crowded menu bar, open the running app
 again from Applications, Spotlight or a pinned Dock shortcut. It brings the
 same Settings window forward; no second helper process or setup dialog is needed.
+Settings remains reachable during a transfer. Changes to the dictation-app list
+are refused until the transfer finishes; opening Settings is an explicit focus
+change and uses the normal paste cancellation and clipboard cleanup rules.
 
 The installed app automatically registers itself to launch at login on first use,
 using Apple's main-app login service. Settings shows its current status and opens

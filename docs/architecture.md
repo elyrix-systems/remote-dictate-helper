@@ -42,6 +42,16 @@ Delayed/missed activation can pass original input through, never authorize a
 paste into a different target. Screen Sharing baseline sampling is suspended
 outside its client and starts fresh on return.
 
+An idle Screen Sharing baseline read that times out no longer permanently
+excludes that clipboard revision. It can retry after 0.5, 2 and 5 seconds, each
+with the existing 250 ms isolated-reader limit and at most one sample in flight.
+After four failures the same revision is left alone until a new revision or a
+new client-focus scope. Oversized data is refused without retries. Recovery
+only records a complete pre-paste snapshot; it never captures an already missed
+paste or authorizes a later replay. Leaving the client cancels the read and
+invalidates its generation. The input-capture and source-release deadlines are
+unchanged. See the [baseline recovery investigation](experiments/screen-sharing-baseline-2026-11-02.md).
+
 Only synthetic Command+V candidates in an active scope resolve a source, on a separate queue
 with one outstanding lookup shared across filters and restarts; ordinary input performs no application
 lookup. Candidate data is prepared asynchronously, with at most 60 ms of the

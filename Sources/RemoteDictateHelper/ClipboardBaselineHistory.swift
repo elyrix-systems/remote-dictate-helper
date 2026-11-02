@@ -1,5 +1,37 @@
 import AppKit
 
+/// A transient provider failure must not poison an unchanged clipboard forever.
+/// The idle sampler gets three spaced retries, never an unbounded polling loop.
+struct ClipboardBaselineRetry {
+    private(set) var revision: Int?
+    private(set) var failures = 0
+    private var nextAttempt: TimeInterval = 0
+    private static let delays: [TimeInterval] = [0.5, 2, 5]
+
+    func permits(_ revision: Int, at time: TimeInterval) -> Bool {
+        self.revision != revision || time >= nextAttempt
+    }
+
+    mutating func failed(_ revision: Int, at time: TimeInterval, error: Error) -> TimeInterval? {
+        if self.revision != revision { reset(); self.revision = revision }
+        failures += 1
+        let transient: Bool
+        switch error {
+        case is IsolatedClipboardError, LocalClipboardError.unavailable, LocalClipboardError.changed:
+            transient = true
+        default: transient = false
+        }
+        guard transient, failures <= Self.delays.count else {
+            nextAttempt = .infinity; return nil
+        }
+        let delay = Self.delays[failures - 1]
+        nextAttempt = time + delay
+        return delay
+    }
+
+    mutating func reset() { revision = nil; failures = 0; nextAttempt = 0 }
+}
+
 /// Short, RAM-only history while Screen Sharing is active. The returned source
 /// clipboard must match a snapshot observed BEFORE the paste attempt. Never
 /// invent an original from the dictation payload or an unknown remote echo.

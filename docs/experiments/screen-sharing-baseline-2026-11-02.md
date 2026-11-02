@@ -41,11 +41,23 @@ The accepted paste, restoration and Windows protocols remain unchanged.
 Operational logs now distinguish retry scheduling, exhausted budgets, recovery
 and a passed-through paste with no baseline, without storing clipboard contents.
 
-Physical acceptance of this candidate is pending. Requires the local Mac,
-Accessibility, Flow, Apple Screen Sharing and a remote disposable field. After
-the normal-copy gate, perform consecutive dictations with an original local
-marker and verify one insertion without a leading character, plus restoration
-of the marker. Repeat after sharing has returned remote clipboard formats and
-after leaving/returning to the client. Never introduce an artificial hung
-provider on the general clipboard. Raw logs remain in ignored local audit
-storage and are not published.
+## Local acceptance: 115.1.1
+
+The owner granted Accessibility to the signed local candidate, then confirmed
+three consecutive Flow dictations in Screen Sharing: each appeared once without
+`v`/`м`, the field's existing prefix remained intact and the original local marker
+was preserved. Ordinary manual clipboard paste had already passed the first gate.
+
+Local metadata recorded three posted pastes and three completed restorations.
+After each operation, Screen Sharing's next baseline read timed out once, then
+recovered on the first retry after approximately 0.53 seconds, with the same
+ownership revision. The second and third dictations used those recovered
+originals. This directly exercises the production recovery path that the old
+failed-revision exclusion would have prevented; it is not only a happy-path test.
+Remote results and marker preservation are established by the owner's report.
+
+This is a local three-dictation trial, not proof of prolonged stability, all
+provider delays, sleep/wake, or the separate source-release timeout. Further
+ordinary use and leaving/returning to the client remain useful checks. No
+artificial hung provider was placed on the general clipboard. Raw logs remain
+in ignored local audit storage and are not published.

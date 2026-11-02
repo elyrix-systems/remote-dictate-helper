@@ -1,5 +1,19 @@
 # Accepted behavior and evidence
 
+## Screen Sharing baseline recovery: local 115.1.1
+
+On 2026-11-02, the owner confirmed three consecutive Flow dictations through
+Screen Sharing with one insertion each, no leading `v`/`м`, the existing field
+prefix intact and the original local clipboard marker preserved. Manual local
+copy/remote paste had passed first. Metadata recorded a baseline timeout after
+each completed transfer, followed by same-revision recovery on the first spaced
+retry; the next two pastes used the recovered originals. See the
+[investigation](experiments/screen-sharing-baseline-2026-11-02.md) for evidence
+and limits. This does not establish a fix for source-release timeouts or Windows
+App clipboard failures.
+
+## Earlier accepted protocol
+
 The maintained paste protocol was tested on the user's local Mac with Apple
 Screen Sharing on 2026-10-04 and 2026-10-05. Recovery copies of those builds are
 kept outside this repository. This record concerns behavior, not acceptance of

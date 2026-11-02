@@ -97,20 +97,30 @@ build paths. The checksum detects changed bytes, not publisher authenticity.
 2. Pass CI and physical checks appropriate to the change, then merge to `main`.
 3. Create and push an immutable annotated `vMAJOR.MINOR.PATCH` tag at that commit.
 4. **Package release** runs tests, builds the Apple silicon DMG and creates a draft
-   with the corresponding changelog section. Tag builds default to ad-hoc signing
-   (the internal `preview` mode). Signing mode does not determine release stability.
+   with the corresponding changelog section. Tag builds use Developer ID signing
+   and Apple notarization through the protected `release` environment. Signing
+   mode does not determine release stability.
 5. Review the draft and test a browser-downloaded copy on a clean Mac account.
    Publish only after its signature/permissions and actual remote paste work.
 
-The workflow can also be dispatched on an exactly tagged `main`. It rejects
-off-main commits, version/tag mismatch and arbitrary user-supplied refs. Release
-artifacts expire after seven days; the published DMG is a GitHub Release asset.
+The workflow can also be dispatched on `main`. Manual runs default to `notarized`
+and upload a package artifact without creating a release. This allows the full
+signing/notarization path to be tested before tagging, including when the current
+version already has a published release. These runs do not generate release notes
+or modify GitHub Releases. Select `create_draft` only when `main` is exactly tagged
+with its `VERSION` and that release does not already exist.
+
+Release-producing runs reject off-main commits and version/tag mismatches. All
+manual runs reject branches other than `main` and arbitrary user-supplied refs.
+Package artifacts expire after seven days; the published DMG is a GitHub Release asset.
 Draft publication is deliberate so a green build is not mistaken for physical
 acceptance. Older releases and recovery tags remain immutable.
-Preview builds run in a separate environment without signing secrets or a manual
-approval step. Developer ID builds use the protected `release` environment.
+Explicitly selecting `preview` in a manual run creates an unnotarized, ad-hoc
+package in a separate environment without signing secrets or a manual approval
+step. Developer ID builds use the protected `release` environment. Missing signing
+credentials never cause a fallback to an unnotarized package.
 
-## Future Developer ID releases
+## Developer ID release configuration
 
 Obtain a **Developer ID Application** certificate from an Apple Developer Program
 account. Developer ID Installer is not needed for a drag-to-Applications DMG.
@@ -126,12 +136,27 @@ files or chat messages:
 - `DEVELOPER_ID_IDENTITY`: full Developer ID Application identity name.
 - `APPLE_ID`, `APPLE_APP_PASSWORD`, `APPLE_TEAM_ID`: notarization credentials.
 
-Dispatch **Package release** on the tagged `main`, choosing `notarized`. The
+Keep a password-protected backup of the exported certificate and private key in
+secure storage independent of the original Mac. The certificate file alone does
+not contain the private key. GitHub's hosted macOS runner performs release signing
+and notarization; the original Mac does not need to be online. Retain the same
+Developer ID team and bundle identifier for subsequent releases.
+
+For the first end-to-end check, dispatch **Package release** on `main` with
+`signing: notarized` and `create_draft: false`, approve the protected environment,
+and download the `release-package` artifact from the completed workflow. The
 signing job imports keys into a temporary runner keychain, enables hardened
 runtime and secure timestamps, submits to Apple, staples and validates the ticket,
 and checks Gatekeeper. Credentials are removed on exit. Missing credentials or
 rejected notarization fail the build; it never silently emits a preview instead.
-The signed path must be validated with real credentials before claiming it works.
+Readiness gate: the risky assumption is that real Developer ID signing, hardened
+runtime and notarization preserve the app's behavior and update permissions.
+Apple's requirements are external evidence; a matching exported key and successful
+notary-service authentication establish credential readiness only. A successful
+artifact-only run must establish actual signing, accepted notarization, stapled
+tickets and Gatekeeper checks before the signed path is claimed to work. Browser
+download, Accessibility, physical remote paste and update continuity still require
+the local Mac checks below; hosted CI does not establish those outcomes.
 
 ## Contribution and Actions controls
 

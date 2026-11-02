@@ -45,15 +45,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          fail() { echo "error: $*" >&2; exit 1; }
           version="$(cat VERSION)"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          git merge-base --is-ancestor HEAD origin/main
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'VERSION must be a numeric semantic version'
+          git merge-base --is-ancestor HEAD origin/main || fail 'Release source must be on main'
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            [[ "$GITHUB_REF_NAME" == "v$version" ]]
+            [[ "$GITHUB_REF_NAME" == "v$version" ]] || fail 'Release tag must match VERSION'
           else
-            [[ "$GITHUB_REF_NAME" == main ]]
+            [[ "$GITHUB_REF_NAME" == main ]] || fail 'Manual packaging requires main'
             if [[ "$CREATE_DRAFT" == true ]]; then
-              [[ "$(git rev-parse "v$version^{commit}")" == "$(git rev-parse HEAD)" ]]
+              [[ "$(git rev-parse "v$version^{commit}")" == "$(git rev-parse HEAD)" ]] || fail 'Release draft requires an exactly tagged main'
             fi
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"

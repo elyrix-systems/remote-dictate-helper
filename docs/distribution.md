@@ -128,8 +128,10 @@ Package artifacts expire after seven days; the published DMG is a GitHub Release
 Draft publication is deliberate so a green build is not mistaken for physical
 acceptance. Older releases and recovery tags remain immutable.
 Explicitly selecting `preview` in a manual run creates an unnotarized, ad-hoc
-package in a separate environment without signing secrets or a manual approval
-step. Developer ID builds use the protected `release` environment. Missing signing
+artifact in a separate environment without signing secrets or a manual approval
+step. Preview runs cannot create release drafts; requesting `preview` together
+with `create_draft` fails before building. Developer ID builds use the protected
+`release` environment. Missing signing
 credentials never cause a fallback to an unnotarized package.
 
 ## Developer ID release configuration

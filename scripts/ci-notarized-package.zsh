@@ -15,6 +15,7 @@ original_keychains=(${(Q)${(Z+n+)keychain_search_list}})
 private_dir="$(mktemp -d "$RUNNER_TEMP/rdh-signing.XXXXXX")"
 chmod 700 "$private_dir"
 keychain="$private_dir/release.keychain-db"
+# Restore the runner's search list before removing temporary signing credentials.
 cleanup() {
   /usr/bin/security list-keychains -d user -s "${original_keychains[@]}" >/dev/null 2>&1 || true
   /usr/bin/security delete-keychain "$keychain" >/dev/null 2>&1 || true

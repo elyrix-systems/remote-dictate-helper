@@ -54,8 +54,9 @@ access. In that case, remove the old helper entry with **−**, click the helper
 **Open Accessibility Settings…**, and grant the newly listed installed copy.
 The helper does not clear privacy decisions. Keeping the same certificate and
 bundle identifier avoids changing identity on local rebuilds; the initial move
-from ad-hoc to certificate signing still requires renewed access. Public ad-hoc
-downloads retain this limitation until Developer ID signing is available.
+from ad-hoc to certificate signing still requires renewed access. Previously
+published ad-hoc downloads retain this limitation after newer notarized releases
+become available.
 See Apple's [code identity requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements).
 
 For the 0.8.0 tooling replacement, local checks cover a real ad-hoc build and
@@ -108,7 +109,11 @@ build paths. The checksum detects changed bytes, not publisher authenticity.
    and Apple notarization through the protected `release` environment. Signing
    mode does not determine release stability.
 5. Review the draft and test a browser-downloaded copy on a clean Mac account.
-   Publish only after its signature/permissions and actual remote paste work.
+   Promote to the latest stable release only after its signature/permissions and
+   actual remote paste work. For the owner's 2.0.0 testing rollout, a verified
+   signed/notarized package may first be published as a **pre-release**, without
+   changing the website or the latest stable release. Publish the website update
+   and promote the release only after the owner accepts the downloaded package.
 
 The workflow can also be dispatched on `main`. Manual runs default to `notarized`
 and upload a package artifact without creating a release. This allows the full
@@ -123,14 +128,20 @@ Package artifacts expire after seven days; the published DMG is a GitHub Release
 Draft publication is deliberate so a green build is not mistaken for physical
 acceptance. Older releases and recovery tags remain immutable.
 Explicitly selecting `preview` in a manual run creates an unnotarized, ad-hoc
-package in a separate environment without signing secrets or a manual approval
-step. Developer ID builds use the protected `release` environment. Missing signing
+artifact in a separate environment without signing secrets or a manual approval
+step. Preview runs cannot create release drafts; requesting `preview` together
+with `create_draft` fails before building. Developer ID builds use the protected
+`release` environment. Missing signing
 credentials never cause a fallback to an unnotarized package.
 
 ## Developer ID release configuration
 
 Obtain a **Developer ID Application** certificate from an Apple Developer Program
-account. Developer ID Installer is not needed for a drag-to-Applications DMG.
+account, choosing **G2 Sub-CA (Xcode 11.4.1 or later)** when asked for the
+intermediate authority. Certificates issued by the previous authority expire by
+February 1, 2027; verify the issuer and expiration of the exported certificate.
+See [Apple's certificate replacement guidance](https://developer.apple.com/news/?id=w4atic4c).
+Developer ID Installer is not needed for a drag-to-Applications DMG.
 Keep the existing app bundle identifier for update continuity. The first move
 from local/ad-hoc signing to Developer ID may require fresh Accessibility approval.
 
@@ -152,9 +163,14 @@ Developer ID team and bundle identifier for subsequent releases.
 For the first end-to-end check, dispatch **Package release** on `main` with
 `signing: notarized` and `create_draft: false`, approve the protected environment,
 and download the `release-package` artifact from the completed workflow. The
-signing job imports keys into a temporary runner keychain, enables hardened
-runtime and secure timestamps, submits to Apple, staples and validates the ticket,
-and checks Gatekeeper. Credentials are removed on exit. Missing credentials or
+signing job imports keys into a temporary runner keychain and adds it to the
+runner's search list while retaining existing keychains. It also downloads Apple's
+public G2 intermediate over HTTPS, verifies its pinned SHA-256 checksum and adds
+it to that temporary keychain without changing trust settings. This supports P12
+exports that contain only the signing certificate and private key. The job enables
+hardened runtime and secure timestamps, submits to Apple, staples and validates the ticket,
+and checks Gatekeeper. The original search list is restored and the temporary
+keychain and credential files are removed on exit. Missing credentials or
 rejected notarization fail the build; it never silently emits a preview instead.
 Readiness gate: the risky assumption is that real Developer ID signing, hardened
 runtime and notarization preserve the app's behavior and update permissions.

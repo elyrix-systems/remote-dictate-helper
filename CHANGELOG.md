@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.0.0 — 2026-11-03
+
+- Distribute the app with the organization's Developer ID signature, hardened
+  runtime and secure timestamps. Apple notarization tickets are attached to both
+  the app and its DMG for downloaded-app verification, including offline use.
+- Build, sign and notarize release packages on GitHub-hosted macOS runners, so
+  releasing does not depend on the maintainer's working Mac.
+- Keep the existing app identifier, saved settings, macOS 26 minimum and Apple
+  silicon support. The first update from an ad-hoc or locally signed copy may
+  require a new Accessibility grant.
+
+Version 2.0 marks the change in distribution. Dictation behavior is the same as
+1.1.6, including its Screen Sharing clipboard recovery and Settings access fixes.
+Updates remain manual: quit the helper normally before replacing it in Applications.
+
+The initial 2.0.0 pre-release is for browser-download, first-launch, Accessibility
+and physical dictation checks. Promotion to the latest stable release and website
+updates follow the owner's acceptance of that downloaded package. Automated
+signature and notarization checks do not establish remote text insertion.
+
 ## 1.1.6 — 2026-11-02
 
 - Recover from a temporary clipboard-read timeout in Apple Screen Sharing.

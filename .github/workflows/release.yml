@@ -12,7 +12,7 @@ on:
         type: choice
         options: [notarized, preview]
       create_draft:
-        description: Create a release draft (requires main to be exactly tagged)
+        description: Create a notarized release draft (requires main to be exactly tagged)
         required: true
         default: false
         type: boolean
@@ -46,6 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           fail() { echo "error: $*" >&2; exit 1; }
+          [[ "$CREATE_DRAFT" != true || "$PACKAGE_MODE" == notarized ]] || fail 'Release drafts require notarized signing'
           version="$(cat VERSION)"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'VERSION must be a numeric semantic version'
           git merge-base --is-ancestor HEAD origin/main || fail 'Release source must be on main'
@@ -88,7 +89,7 @@ jobs:
           retention-days: 7
 
   draft:
-    if: github.event_name == 'push' || inputs.create_draft
+    if: github.event_name == 'push' || (inputs.create_draft && inputs.signing == 'notarized')
     needs: package
     runs-on: ubuntu-24.04
     timeout-minutes: 5

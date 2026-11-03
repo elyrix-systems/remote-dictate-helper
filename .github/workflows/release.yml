@@ -8,9 +8,14 @@ on:
       signing:
         description: Distribution type (Developer ID needs protected environment secrets)
         required: true
-        default: preview
+        default: notarized
         type: choice
-        options: [preview, notarized]
+        options: [notarized, preview]
+      create_draft:
+        description: Create a release draft (requires main to be exactly tagged)
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -23,9 +28,10 @@ jobs:
     if: github.repository == 'elyrix-systems/remote-dictate-helper' && (github.event_name == 'push' || github.ref == 'refs/heads/main')
     runs-on: macos-26
     timeout-minutes: 30
-    environment: ${{ inputs.signing == 'notarized' && 'release' || 'preview' }}
+    environment: ${{ inputs.signing == 'preview' && 'preview' || 'release' }}
     env:
-      PACKAGE_MODE: ${{ inputs.signing || 'preview' }}
+      PACKAGE_MODE: ${{ inputs.signing || 'notarized' }}
+      CREATE_DRAFT: ${{ github.event_name == 'push' || inputs.create_draft }}
     outputs:
       version: ${{ steps.version.outputs.version }}
       mode: ${{ env.PACKAGE_MODE }}
@@ -39,14 +45,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          fail() { echo "error: $*" >&2; exit 1; }
           version="$(cat VERSION)"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          git merge-base --is-ancestor HEAD origin/main
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'VERSION must be a numeric semantic version'
+          git merge-base --is-ancestor HEAD origin/main || fail 'Release source must be on main'
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            [[ "$GITHUB_REF_NAME" == "v$version" ]]
+            [[ "$GITHUB_REF_NAME" == "v$version" ]] || fail 'Release tag must match VERSION'
           else
-            [[ "$GITHUB_REF_NAME" == main ]]
-            [[ "$(git rev-parse "v$version^{commit}")" == "$(git rev-parse HEAD)" ]]
+            [[ "$GITHUB_REF_NAME" == main ]] || fail 'Manual packaging requires main'
+            if [[ "$CREATE_DRAFT" == true ]]; then
+              [[ "$(git rev-parse "v$version^{commit}")" == "$(git rev-parse HEAD)" ]] || fail 'Release draft requires an exactly tagged main'
+            fi
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Regression and source privacy checks
@@ -67,6 +76,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: ./scripts/ci-notarized-package.zsh
       - name: Write maintained release notes
+        if: env.CREATE_DRAFT == 'true'
         run: python3 scripts/release-notes.py "$PACKAGE_MODE" > .build/package/RELEASE-NOTES.md
       - name: Verify mounted image without running the app
         run: ./scripts/verify-package.zsh .build/package/*.dmg
@@ -78,6 +88,7 @@ jobs:
           retention-days: 7
 
   draft:
+    if: github.event_name == 'push' || inputs.create_draft
     needs: package
     runs-on: ubuntu-24.04
     timeout-minutes: 5

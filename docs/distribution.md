@@ -193,7 +193,8 @@ Supply a known UUID for subsequent checks,
 including submissions older than the default 24-hour history window.
 
 This diagnostic does not sign, upload or publish software and does not receive the
-signing P12. Its notarization credentials are kept in a disposable runner keychain.
+signing P12. It passes the existing Apple credentials directly to `notarytool` on
+the disposable runner and does not create a keychain or save a credential profile.
 An `Accepted` status alone is not a downloadable release: the actual package still
 needs stapled tickets, Gatekeeper verification and the physical checks below.
 

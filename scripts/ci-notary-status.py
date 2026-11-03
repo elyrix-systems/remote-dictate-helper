@@ -5,9 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import sys
-import tempfile
-from uuid import UUID, uuid4
+from uuid import UUID
 
 
 class StatusError(Exception):
@@ -78,7 +76,7 @@ def command(arguments):
 
 
 def main():
-    """Use a disposable credential profile; neither sign nor submit any package."""
+    """Query Apple once on a hosted runner; neither sign nor submit a package."""
     if (os.environ.get("GITHUB_ACTIONS") != "true"
             or os.environ.get("GITHUB_REPOSITORY") != "elyrix-systems/remote-dictate-helper"
             or os.environ.get("GITHUB_REF") != "refs/heads/main"
@@ -91,31 +89,17 @@ def main():
     for name in ("APPLE_ID", "APPLE_APP_PASSWORD", "APPLE_TEAM_ID"):
         if not os.environ.get(name):
             raise StatusError(f"Missing {name}.")
-    with tempfile.TemporaryDirectory(prefix="rdh-notary-status-", dir=os.environ["RUNNER_TEMP"]) as directory:
-        keychain = Path(directory) / "status.keychain-db"
-        password = str(uuid4())
-        try:
-            command(["/usr/bin/security", "create-keychain", "-p", password, keychain])
-            command(["/usr/bin/security", "set-keychain-settings", "-lut", "300", keychain])
-            command(["/usr/bin/security", "unlock-keychain", "-p", password, keychain])
-            command(["/usr/bin/xcrun", "notarytool", "store-credentials", "rdh-status",
-                     "--keychain", keychain, "--apple-id", os.environ["APPLE_ID"],
-                     "--team-id", os.environ["APPLE_TEAM_ID"],
-                     "--password", os.environ["APPLE_APP_PASSWORD"]])
-            operation = ["info", requested] if requested else ["history"]
-            raw = command(["/usr/bin/xcrun", "notarytool", *operation,
-                           "--keychain-profile", "rdh-status", "--keychain", keychain,
-                           "--output-format", "json"])
-            try:
-                payload = json.loads(raw)
-            except json.JSONDecodeError:
-                raise StatusError("Unexpected notarization JSON response.") from None
-            print(json.dumps(summarize(payload, requested, since), indent=2))
-        finally:
-            try:
-                command(["/usr/bin/security", "delete-keychain", keychain])
-            except StatusError:
-                print("Warning: keychain removal failed; the hosted runner is disposable.", file=sys.stderr)
+    operation = ["info", requested] if requested else ["history"]
+    raw = command(["/usr/bin/xcrun", "notarytool", *operation,
+                   "--apple-id", os.environ["APPLE_ID"],
+                   "--team-id", os.environ["APPLE_TEAM_ID"],
+                   "--password", os.environ["APPLE_APP_PASSWORD"],
+                   "--output-format", "json"])
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        raise StatusError("Unexpected notarization JSON response.") from None
+    print(json.dumps(summarize(payload, requested, since), indent=2))
 
 
 if __name__ == "__main__":

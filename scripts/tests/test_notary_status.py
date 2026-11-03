@@ -55,7 +55,7 @@ class NotaryStatusTests(unittest.TestCase):
         with self.assertRaises(status.StatusError):
             status.summarize({"history": "unexpected"})
 
-    def test_local_invocation_never_opens_a_keychain(self):
+    def test_local_invocation_never_calls_notarytool(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(status, "command") as command:
             with self.assertRaises(status.StatusError):
                 status.main()
@@ -63,7 +63,7 @@ class NotaryStatusTests(unittest.TestCase):
 
     def test_command_errors_and_timeouts_do_not_disclose_credentials(self):
         """Subprocess diagnostics must not echo credential-bearing arguments."""
-        arguments = ["/usr/bin/security", "import", "-P", "private-password"]
+        arguments = ["/usr/bin/xcrun", "notarytool", "history", "--password", "private-password"]
         failed = subprocess.CompletedProcess(arguments, 1, "", "private-password")
         for result, exception in [(failed, None), (None, subprocess.TimeoutExpired(arguments, 90))]:
             with patch.object(status.subprocess, "run", return_value=result, side_effect=exception):
@@ -71,8 +71,8 @@ class NotaryStatusTests(unittest.TestCase):
                     status.command(arguments)
                 self.assertNotIn("private-password", str(error.exception))
 
-    def test_status_operations_and_failure_cleanup_without_real_credentials(self):
-        """Exercise the credential lifecycle without calling Security or Apple."""
+    def test_status_operations_without_real_credentials_or_keychain_changes(self):
+        """Only a single read-only Apple operation is allowed, even on failure."""
         for requested in (False, True):
             for fail in (False, True):
                 with self.subTest(requested=requested, fail=fail), tempfile.TemporaryDirectory() as directory:
@@ -102,7 +102,6 @@ class NotaryStatusTests(unittest.TestCase):
                         else:
                             status.main()
                             self.assertEqual(json.loads(output.getvalue())["submissions"][0]["id"], SUBMISSION)
-                    operations = [args[2] for args in calls if args[0] == "/usr/bin/xcrun"]
-                    self.assertEqual(operations, ["store-credentials", "info" if requested else "history"])
-                    self.assertEqual(calls[-1][1], "delete-keychain")
+                    self.assertEqual(len(calls), 1)
+                    self.assertEqual(calls[0][:3], ["/usr/bin/xcrun", "notarytool", "info" if requested else "history"])
                     self.assertNotIn("sample-app-password", output.getvalue())

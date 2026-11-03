@@ -60,7 +60,7 @@ final class DictationPasteMonitor {
     private var history = ClipboardBaselineHistory()
     private var pending: Pending?
     private var lastHandledRevision: Int?
-    private var failedSampleRevision: Int?
+    private var baselineRetry = ClipboardBaselineRetry()
     private var sampledTargetPID: pid_t?
     private var timer: Timer?
     private var filter: PasteEventFilter?
@@ -114,6 +114,7 @@ final class DictationPasteMonitor {
 
     func setSamplingActive(_ active: Bool) {
         generation += 1
+        baselineRetry.reset()
         sampleTask?.cancel(); sampleTask = nil
         timer?.invalidate(); timer = nil
         guard active else {
@@ -156,7 +157,7 @@ final class DictationPasteMonitor {
     }
 
     /// The timer never calls an external data provider. One asynchronous sample
-    /// at a time; failed revisions are not retried every 20 ms.
+    /// at a time; transient failures have a finite, spaced recovery budget.
     func scheduleSample() {
         guard filterHealthy else { return }
         if suppressedPID != nil, now() - suppressedAt > 5 { suppressedPID = nil }
@@ -164,14 +165,16 @@ final class DictationPasteMonitor {
         guard isAvailable(), let target = targetPID() else {
             sampleTask?.cancel(); sampleTask = nil
             generation += 1
+            baselineRetry.reset()
             history.clear(); sampledTargetPID = nil; return
         }
         if sampledTargetPID != target {
             sampleTask?.cancel(); sampleTask = nil; generation += 1
+            baselineRetry.reset()
             history.clear(); sampledTargetPID = target
         }
         let revision = board.changeCount
-        guard sampleTask == nil, failedSampleRevision != revision,
+        guard sampleTask == nil, baselineRetry.permits(revision, at: now()),
               history.entries.last?.revision != revision else { return }
         let token = generation
         diagnostic("clipboard.read_begin stage=baseline revision=\(revision) targetPID=\(target)")
@@ -183,13 +186,13 @@ final class DictationPasteMonitor {
                 try Task.checkCancellation()
                 guard generation == token, pending == nil, targetPID() == target, isAvailable(),
                       board.changeCount == revision else { return }
-                sample()
+                try storeBaseline(revision)
                 diagnostic("clipboard.read_ready stage=baseline revision=\(revision)")
             } catch is CancellationError { }
             catch {
-                guard generation == token, board.changeCount == revision else { return }
-                history.clear(); failedSampleRevision = revision
-                report("baseline unavailable revision=\(revision): \(error)")
+                guard generation == token, board.changeCount == revision,
+                      pending == nil, targetPID() == target, isAvailable() else { return }
+                baselineFailed(revision, error: error)
                 diagnostic("clipboard.read_failed stage=baseline revision=\(revision) targetPID=\(target) error=\(error)")
             }
         }
@@ -246,14 +249,31 @@ final class DictationPasteMonitor {
         guard isAvailable(), let target = targetPID() else {
             history.clear(); sampledTargetPID = nil; return
         }
-        if sampledTargetPID != target { history.clear(); sampledTargetPID = target }
-        guard failedSampleRevision != board.changeCount else { return }
-        do { try history.sample(board, access: access) }
+        if sampledTargetPID != target { history.clear(); baselineRetry.reset(); sampledTargetPID = target }
+        let revision = board.changeCount
+        guard baselineRetry.permits(revision, at: now()) else { return }
+        do { try storeBaseline(revision) }
         catch {
-            history.clear(); failedSampleRevision = board.changeCount
-            report("baseline unavailable revision=\(board.changeCount)")
+            guard board.changeCount == revision else { return }
+            baselineFailed(revision, error: error)
             diagnostic("capture.baseline_unavailable revision=\(board.changeCount) targetPID=\(target) error=\(error)")
         }
+    }
+
+    private func storeBaseline(_ revision: Int) throws {
+        guard board.changeCount == revision else { throw LocalClipboardError.changed }
+        try history.sample(board, access: access)
+        if baselineRetry.revision == revision {
+            report("baseline recovered revision=\(revision) previousFailures=\(baselineRetry.failures)")
+        }
+        baselineRetry.reset()
+    }
+
+    private func baselineFailed(_ revision: Int, error: Error) {
+        history.clear()
+        let delay = baselineRetry.failed(revision, at: now(), error: error)
+        let retry = delay.map { "retryAfterMs=\(Int($0 * 1000))" } ?? "retryBudget=exhausted"
+        report("baseline unavailable revision=\(revision) attempt=\(baselineRetry.failures) \(retry): \(error)")
     }
 
     /// Return true only when the caller must remove this event from the stream.
@@ -290,7 +310,10 @@ final class DictationPasteMonitor {
         let started = now()
         do {
             let candidates = history.preceding(revision)
-            guard let baseline = candidates.last, sampledTargetPID == target else { throw DictationCaptureError.originalUnknown }
+            guard let baseline = candidates.last, sampledTargetPID == target else {
+                report("paste passed through: original unavailable revision=\(revision) targetPID=\(target) sampledTargetPID=\(sampledTargetPID.map(String.init) ?? "none") baselineFailedRevision=\(baselineRetry.revision.map(String.init) ?? "none") baselineFailures=\(baselineRetry.failures)")
+                throw DictationCaptureError.originalUnknown
+            }
             let read = preparedRead ?? { try CapturedClipboard.read(from: self.board, after: baseline.revision, access: self.access) }
             guard let payload = try read() else {
                 report("empty result skipped"); history.clear(); return remove

@@ -35,7 +35,9 @@ struct TestRunner {
         if runAccessibilityProbeFixture() || ClipboardReaderProcess.runIfRequested() || runClipboardProviderFixture() { return }
         try await testIsolatedClipboardReading()
         try await testAsyncCaptureAndExpiredDecision()
+        try await testDeferredBaselineRecovery()
         if CommandLine.arguments.contains("--isolation-only") { return }
+        try await testBaselineRecoveryBudget()
         testCaptureDecisionDeadline()
         try testLocalInputDoesNotQueueWork()
         try testTargetGateKeepsAcceptedRelease()

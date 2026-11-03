@@ -183,3 +183,37 @@ private func isolationTestReader() -> IsolatedClipboardReader {
     }
     return .shared
 }
+
+/// The provider outlives the first reader's deadline and materializes data without
+/// a new ownership revision, as a remote clipboard promise can do.
+@MainActor func testDeferredBaselineRecovery() async throws {
+    let board = NSPasteboard(name: .init("rdh-deferred-baseline-\(UUID())"))
+    defer { board.releaseGlobally() }
+    let owner = try provider(for: board, delay: 0.6)
+    defer { stopFixture(owner) }
+    let revision = board.changeCount
+    var clock: TimeInterval = 0, reports: [String] = []
+    let monitor = DictationPasteMonitor(board: board, access: ClipboardAccess(reader: isolationTestReader()),
+        targetPID: { 100 }, isAvailable: { true }, now: { clock },
+        onCaptured: { _ in fail("Baseline recovery cannot capture or post input") }, onError: { fail("\($0)") },
+        report: { reports.append($0) })
+    defer { monitor.stop() }
+    monitor.scheduleSample()
+    for _ in 0..<200 {
+        if reports.contains(where: { $0.contains("baseline unavailable") }) { break }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    expectTrue(reports.contains(where: { $0.contains("baseline unavailable") }))
+    // Owner is still finishing the original promised-data request. Its later
+    // completion must not publish a new clipboard generation to enable recovery.
+    try await Task.sleep(for: .milliseconds(600))
+    expectEqual(board.changeCount, revision)
+    clock = 0.5; monitor.scheduleSample()
+    for _ in 0..<200 {
+        if reports.contains(where: { $0.contains("baseline recovered") }) { break }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    expectTrue(reports.contains(where: { $0.contains("baseline recovered") }), "Delayed provider should recover: \(reports)")
+    expectEqual(board.changeCount, revision)
+    print("Actual deferred provider: first isolated reader times out; same-revision baseline recovers without input or clipboard writes")
+}

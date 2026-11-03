@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.6 — 2026-11-02
+
+- Recover from a temporary clipboard-read timeout in Apple Screen Sharing.
+  Previously, one timeout could leave subsequent dictations unhandled, producing
+  a single `v` or `м`. Bounded background retries can now preserve the original
+  clipboard when the same data becomes available later.
+- Open Settings by reopening the running app from Applications, Spotlight or a
+  pinned Dock shortcut, even when its menu bar icon is hidden.
+- Remember the menu bar icon's chosen position across launches. macOS still
+  controls visibility when the menu bar is crowded.
+- Improve metadata-only logs for baseline failures, retries and recovery.
+
+Validation: automated regression tests include a delayed clipboard provider and
+bounded retry/cancellation guards. The owner confirmed three consecutive Flow
+dictations without stray characters or lost local clipboard contents; logs
+recorded successful recovery after real provider timeouts. This does not address
+the separate source-release timeout or intermittent Windows App clipboard
+problems. Downloads keep diagnostic logging disabled and remain ad-hoc signed,
+without Apple notarization.
+
 ## 1.1.5 — 2026-10-10
 
 - Keep the privacy note and installed version/build on one footer line in

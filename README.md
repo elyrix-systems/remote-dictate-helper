@@ -91,27 +91,33 @@ does not claim the dictation app has restored its clipboard.
 ### Download the app
 
 Get the DMG from the [latest stable release](https://github.com/elyrix-systems/remote-dictate-helper/releases/latest).
+Testing builds are marked **Pre-release** on the [releases page](https://github.com/elyrix-systems/remote-dictate-helper/releases).
 **Apple silicon only** (M1 or later) running **macOS 26+**.
 
 1. Open the DMG and drag **Remote Dictate Helper.app** to **Applications**.
 2. Eject the disk image, then open the installed app from Applications.
 3. In **Settings**, grant Accessibility and choose your dictation apps. List changes save automatically.
 
-**Stable downloads are currently not Apple notarized.** They are ad-hoc signed, not signed
-with an Apple Developer ID. macOS may block the first launch. If you have reviewed
-the source/release and trust it, use **System Settings → Privacy & Security →
-Open Anyway**, where available. Follow [Apple’s instructions](https://support.apple.com/en-us/102445).
-Managed Macs may prohibit this. Do not disable Gatekeeper, remove quarantine with
-terminal commands or install a self-signed publisher certificate.
+Choose a release explicitly marked **Developer ID signed and Apple notarized**.
+These packages use the organization's Apple-issued signature and carry notarization
+tickets in both the app and DMG. macOS can still ask you to confirm opening a
+downloaded app, and Accessibility approval is still required.
+
+Older downloads and explicitly requested preview builds with `unnotarized` in
+their filename are ad-hoc signed. macOS may block their launch; managed Macs may
+forbid them. Publishing a newer notarized release does not change those older
+files. See [Apple’s downloaded-app guidance](https://support.apple.com/en-us/102445).
+Do not disable Gatekeeper, remove quarantine with terminal commands or install a
+self-signed publisher certificate.
 
 Each DMG includes a SHA-256 checksum to check download integrity. A checksum does
-not independently authenticate its publisher. A future release explicitly marked
-**Developer ID signed and Apple notarized** will provide the normal downloaded-app
-opening experience. Accessibility approval is still required.
+not independently authenticate its publisher.
 
 To update, quit the helper from its menu, wait for it to finish clipboard cleanup,
-and replace it in Applications. Settings remain in your user Library. Ad-hoc
-updates may need Accessibility to be granted again. There is no automatic updater.
+and replace it in Applications. Settings remain in your user Library. The first
+transition from an ad-hoc or locally signed copy to Developer ID may require a
+new Accessibility grant; further ad-hoc updates can also require one.
+There is no automatic updater.
 
 ### Build from source
 
@@ -149,7 +155,7 @@ make privacy-scan
 REMOTE_DICTATE_CODESIGN_IDENTITY=- make build
 ```
 
-See [release packaging](docs/distribution.md) for DMG builds and future Developer
+See [release packaging](docs/distribution.md) for DMG builds and Developer
 ID signing, and [contributing](CONTRIBUTING.md) to submit a change.
 
 ## First use

@@ -9,10 +9,14 @@ set -euo pipefail
 : "${APPLE_APP_PASSWORD:?Missing notary credential}"
 : "${APPLE_TEAM_ID:?Missing team ID}"
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+keychain_search_list="$(/usr/bin/security list-keychains -d user)"
+# Parse security's quoted paths without evaluating them; newlines are separators.
+original_keychains=(${(Q)${(Z+n+)keychain_search_list}})
 private_dir="$(mktemp -d "$RUNNER_TEMP/rdh-signing.XXXXXX")"
 chmod 700 "$private_dir"
 keychain="$private_dir/release.keychain-db"
 cleanup() {
+  /usr/bin/security list-keychains -d user -s "${original_keychains[@]}" >/dev/null 2>&1 || true
   /usr/bin/security delete-keychain "$keychain" >/dev/null 2>&1 || true
   rm -rf "$private_dir"
 }
@@ -22,6 +26,9 @@ print -rn -- "$DEVELOPER_ID_P12_BASE64" | /usr/bin/base64 --decode > "$private_d
 /usr/bin/security create-keychain -p "$keychain_password" "$keychain"
 /usr/bin/security set-keychain-settings -lut 1800 "$keychain"
 /usr/bin/security unlock-keychain -p "$keychain_password" "$keychain"
+# codesign still needs the search list for identity/chain resolution, even with
+# --keychain. Keep the runner's existing keychains available for intermediates.
+/usr/bin/security list-keychains -d user -s "$keychain" "${original_keychains[@]}"
 /usr/bin/security import "$private_dir/signing.p12" -k "$keychain" -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign >/dev/null
 /usr/bin/security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
 /usr/bin/xcrun notarytool store-credentials rdh-release --keychain "$keychain" \

@@ -11,8 +11,10 @@ Keep future work small and independently testable:
 - Other remote desktop clients require a separate target adapter and validation;
   they must not inherit an Apple Screen Sharing compatibility claim.
 - Source installation and Apple silicon DMG packaging are maintained in
-  [distribution.md](distribution.md). Current downloads are
-  unnotarized; Developer ID distribution requires an Apple Developer account.
+  [distribution.md](distribution.md). The 2.0 distribution transition uses
+  Developer ID signing and notarization; previously published unnotarized
+  downloads remain unchanged. Stable promotion and website claims require the
+  owner's acceptance of the downloaded signed package.
 
 Do not bring back transcript databases, donor apps, recording-hotkey detection,
 Backspace cleanup or menu-based experiments. Preserve release tags and keep

@@ -181,6 +181,23 @@ tickets and Gatekeeper checks before the signed path is claimed to work. Browser
 download, Accessibility, physical remote paste and update continuity still require
 the local Mac checks below; hosted CI does not establish those outcomes.
 
+If a packaging job times out while awaiting notarization, that timeout does not
+establish that Apple rejected the submission. Run **Notary status** on `main`
+through the protected `release` environment before resubmitting. Leave its UUID
+empty to find recent candidates, optionally setting `since_utc` to the packaging
+run's start time. When Apple provides filenames, unrelated names are excluded;
+`app.zip`, `Remote-Dictate-Helper-*` and entries without a filename are retained.
+The bounded output contains only submission UUIDs, timestamps and statuses. Match
+the timestamp to the packaging run before identifying a candidate as this app.
+Supply a known UUID for subsequent checks,
+including submissions older than the default 24-hour history window.
+
+This diagnostic does not sign, upload or publish software and does not receive the
+signing P12. It passes the existing Apple credentials directly to `notarytool` on
+the disposable runner and does not create a keychain or save a credential profile.
+An `Accepted` status alone is not a downloadable release: the actual package still
+needs stapled tickets, Gatekeeper verification and the physical checks below.
+
 ## Contribution and Actions controls
 
 The owner authorized public source and version 1.0 on 2026-10-05. External-fork

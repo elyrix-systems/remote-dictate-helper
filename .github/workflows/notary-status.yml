@@ -1,0 +1,39 @@
+name: Notary status
+
+on:
+  workflow_dispatch:
+    inputs:
+      submission_id:
+        description: Apple submission UUID (leave empty to find recent candidate submissions)
+        required: false
+        type: string
+      since_utc:
+        description: History cutoff with timezone, e.g. 2026-11-03T20:13:33Z (default last 24 hours)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notary-status
+  cancel-in-progress: false
+
+jobs:
+  status:
+    if: github.repository == 'elyrix-systems/remote-dictate-helper' && github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    timeout-minutes: 5
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read Apple submission status without uploading a package
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_SUBMISSION_ID: ${{ inputs.submission_id }}
+          NOTARY_SINCE_UTC: ${{ inputs.since_utc }}
+        run: python3 scripts/ci-notary-status.py

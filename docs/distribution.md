@@ -161,9 +161,12 @@ Developer ID team and bundle identifier for subsequent releases.
 For the first end-to-end check, dispatch **Package release** on `main` with
 `signing: notarized` and `create_draft: false`, approve the protected environment,
 and download the `release-package` artifact from the completed workflow. The
-signing job imports keys into a temporary runner keychain, adds it to the runner's
-search list while retaining existing keychains for certificate-chain resolution, enables hardened
-runtime and secure timestamps, submits to Apple, staples and validates the ticket,
+signing job imports keys into a temporary runner keychain and adds it to the
+runner's search list while retaining existing keychains. It also downloads Apple's
+public G2 intermediate over HTTPS, verifies its pinned SHA-256 checksum and adds
+it to that temporary keychain without changing trust settings. This supports P12
+exports that contain only the signing certificate and private key. The job enables
+hardened runtime and secure timestamps, submits to Apple, staples and validates the ticket,
 and checks Gatekeeper. The original search list is restored and the temporary
 keychain and credential files are removed on exit. Missing credentials or
 rejected notarization fail the build; it never silently emits a preview instead.

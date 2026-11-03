@@ -34,6 +34,10 @@ class NotaryStatusTests(unittest.TestCase):
         with self.assertRaises(status.StatusError):
             status.summarize(dict(record, id="22222222-2222-4222-8222-222222222222"), SUBMISSION)
 
+    def test_history_without_artifact_names_keeps_status_metadata(self):
+        record = {"id": SUBMISSION, "createdDate": "2026-11-03T20:16:00Z", "status": "In Progress"}
+        self.assertEqual(status.summarize({"history": [record]})["submissions"][0]["id"], SUBMISSION)
+
     def test_history_output_is_bounded_and_reports_truncation(self):
         item = {"id": SUBMISSION, "createdDate": "2026-11-03T20:16:00Z",
                 "status": "In Progress", "name": "Remote-Dictate-Helper-2.0.0-arm64.dmg"}

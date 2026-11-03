@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       submission_id:
-        description: Apple submission UUID (leave empty to find recent project submissions)
+        description: Apple submission UUID (leave empty to find recent candidate submissions)
         required: false
         type: string
       since_utc:

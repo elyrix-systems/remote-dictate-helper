@@ -184,10 +184,12 @@ the local Mac checks below; hosted CI does not establish those outcomes.
 If a packaging job times out while awaiting notarization, that timeout does not
 establish that Apple rejected the submission. Run **Notary status** on `main`
 through the protected `release` environment before resubmitting. Leave its UUID
-empty to find recent `app.zip` and `Remote-Dictate-Helper-*` submissions, optionally
-setting `since_utc` to the packaging run's start time. The bounded output contains
-only submission UUIDs, timestamps and statuses; verify the timestamp when matching
-the legacy generic `app.zip` name. Supply a known UUID for subsequent checks,
+empty to find recent candidates, optionally setting `since_utc` to the packaging
+run's start time. When Apple provides filenames, unrelated names are excluded;
+`app.zip`, `Remote-Dictate-Helper-*` and entries without a filename are retained.
+The bounded output contains only submission UUIDs, timestamps and statuses. Match
+the timestamp to the packaging run before identifying a candidate as this app.
+Supply a known UUID for subsequent checks,
 including submissions older than the default 24-hour history window.
 
 This diagnostic does not sign, upload or publish software and does not receive the

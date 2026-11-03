@@ -45,9 +45,12 @@ def summarize(payload, requested_id=None, since=None):
         if not isinstance(record, dict):
             raise StatusError("Unexpected notarization history entry.")
         if not requested_id:
-            name = record.get("name", "")
-            if not isinstance(name, str) or not (name == "app.zip" or name.startswith("Remote-Dictate-Helper-")):
-                continue
+            name = record.get("name")
+            if name:
+                if not isinstance(name, str):
+                    raise StatusError("Unexpected notarization artifact name.")
+                if not (name == "app.zip" or name.startswith("Remote-Dictate-Helper-")):
+                    continue
         item_id = identifier(record.get("id"))
         if requested_id and item_id != requested_id:
             raise StatusError("Notarization response has an unexpected submission ID.")

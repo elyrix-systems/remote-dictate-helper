@@ -36,6 +36,7 @@ struct TestRunner {
         try await testIsolatedClipboardReading()
         try await testAsyncCaptureAndExpiredDecision()
         try await testDeferredBaselineRecovery()
+        try await testIdleBaselineRoundTripAndPreemption()
         try await testSourceReturnReadRecovery()
         if CommandLine.arguments.contains("--isolation-only") { return }
         try await testBaselineRecoveryBudget()
@@ -73,6 +74,7 @@ struct TestRunner {
         let release = ReleaseTests()
         try release.testReturnBeforePasteStartsFreshTransaction()
         try release.testTimeoutDistinguishesKeyReleaseFromClipboard()
+        try release.testReturnReconfirmation()
         let interception = InterceptionTests()
         try await interception.testAllConfiguredSources()
         try interception.testSuppressionScopeAndRelease()

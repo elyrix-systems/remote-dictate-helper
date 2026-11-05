@@ -28,6 +28,12 @@ final class DictationPasteMonitor {
         let original: ClipboardBaselineHistory.Entry
         let releasedRevision: Int
         let targetPID: pid_t
+
+        func validateContinuation(of captured: Self) throws {
+            guard targetPID == captured.targetPID, payload.revision == captured.payload.revision,
+                  original.revision == captured.original.revision,
+                  original.snapshot == captured.original.snapshot else { throw LocalClipboardError.changed }
+        }
     }
     private struct Pending {
         let id: UUID
@@ -182,7 +188,9 @@ final class DictationPasteMonitor {
             guard let self else { return }
             defer { if generation == token { sampleTask = nil } }
             do {
-                try await access.prepare(board)
+                // Idle preparation may need a remote round trip. This does not
+                // enlarge the input-tap budget: capture cancels this owned read.
+                try await access.prepare(board, timeout: 1)
                 try Task.checkCancellation()
                 guard generation == token, pending == nil, targetPID() == target, isAvailable(),
                       board.changeCount == revision else { return }

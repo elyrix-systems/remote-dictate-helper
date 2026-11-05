@@ -28,7 +28,7 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
     private let application: AXUIElement
     private let window: AXUIElement
     private let clipboardText: String
-    private let initialClipboardChangeCount: Int
+    private var initialClipboardChangeCount: Int
     private let writeTranscript: (String) throws -> Void
     private let validateTranscript: () throws -> Void
     private var preparedTranscript = false
@@ -126,6 +126,22 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
         preparedRevision = pasteboard.changeCount
         try validateTargetAndClipboard()
         trace("prepare after revision=\(pasteboard.changeCount)")
+    }
+
+    /// Called only with a source return validated against the pre-capture
+    /// original after sharing was suspended. Never rebind a published payload.
+    func acceptRevalidatedReturn(revision: Int) throws {
+        try validateConnection()
+        try input.checkReadiness(targetPID: pid)
+        guard !preparedTranscript, preparedRevision == nil,
+              pasteboard.changeCount == revision else { throw ScreenSharingClipboardMenuError.clipboardChanged }
+        let state = try readState()
+        guard !state.sharedClipboardEnabled else {
+            throw SharedClipboardSettingError.unconfirmed(expected: false, observed: state)
+        }
+        guard pasteboard.changeCount == revision else { throw ScreenSharingClipboardMenuError.clipboardChanged }
+        trace("returned original revalidated oldRevision=\(initialClipboardChangeCount) newRevision=\(revision)")
+        initialClipboardChangeCount = revision
     }
 
     func readState() throws -> SharedClipboardMenuState {

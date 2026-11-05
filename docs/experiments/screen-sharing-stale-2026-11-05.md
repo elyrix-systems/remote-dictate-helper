@@ -104,3 +104,43 @@ input/focus cancellation, deadline expiry and unrelated new copies.
 Two-second post-paste retention remains in this investigation build, keeping
 the next physical comparison focused on source-return recovery. Physical
 acceptance of 200.1.2 is pending.
+
+## 200.1.2 trial and candidate 200.1.3
+
+In the five-phrase trial, the owner reported phrases 41, 43 and 45 remotely,
+a missing phrase 42 and a `v` in place of phrase 44. The local original remained
+correct. Detailed logs distinguished two earlier stages:
+
+- Phrase 42 passed capture and source return. A native Screen Sharing reply
+  changed the clipboard during the sharing-off transition; pre-publication
+  validation then refused the send. No paste was posted for that phrase.
+- Before phrase 44, an idle baseline read timed out at 250 ms and cleared its
+  history. Remote data arrived about 475 ms after the promise was advertised;
+  Flow could read it and request paste before the helper's 500 ms retry pause
+  ended. With no observed original, the helper passed the source key through.
+
+The source-return timeout fixed in 200.1.2 was not observed in these five
+attempts. This is not evidence that every original stale-text failure is fixed.
+
+The next candidate gives idle baseline reads one second without extending the
+input-tap budget. A real named-board fixture verifies a 450 ms response is
+observed without a failure gap, and a permanently blocked idle read is cancelled
+promptly when a source paste needs the reader.
+
+The transfer is also split into suspend, reconfirm and publish phases. After
+sharing is confirmed off, the source return is read/validated again. It must
+resolve to the same pre-capture original and same captured payload/target.
+Unknown values, a different historical candidate, a new input/focus change or
+the original deadline still stop the operation. A new copy after the replay
+baseline is bound, including an equal-text copy, invalidates publication.
+Existing post-publication restoration ownership checks are unchanged. Early
+failure with no local write still releases the sharing lease.
+
+Readiness gate: the risky assumption is that a source return validated under
+the disabled-sharing lease remains usable for guarded publication. Native logs
+establish the old transitional-revision race; named-board and mock-driver tests
+cover the new ordering and refusals. Actual client delivery and delayed packets
+after that phase still require physical testing. No remote acknowledgement,
+automatic key retry, Backspace or permanently disabled sharing is introduced.
+Two-second post-paste retention remains experimental. Acceptance of 200.1.3 is
+pending; do not promote it solely on component-test results.

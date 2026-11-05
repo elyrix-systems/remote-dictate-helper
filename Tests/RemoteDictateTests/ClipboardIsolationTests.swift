@@ -189,7 +189,7 @@ private func isolationTestReader() -> IsolatedClipboardReader {
 @MainActor func testDeferredBaselineRecovery() async throws {
     let board = NSPasteboard(name: .init("rdh-deferred-baseline-\(UUID())"))
     defer { board.releaseGlobally() }
-    let owner = try provider(for: board, delay: 0.6)
+    let owner = try provider(for: board, delay: 1.4)
     defer { stopFixture(owner) }
     let revision = board.changeCount
     var clock: TimeInterval = 0, reports: [String] = []
@@ -216,6 +216,58 @@ private func isolationTestReader() -> IsolatedClipboardReader {
     expectTrue(reports.contains(where: { $0.contains("baseline recovered") }), "Delayed provider should recover: \(reports)")
     expectEqual(board.changeCount, revision)
     print("Actual deferred provider: first isolated reader times out; same-revision baseline recovers without input or clipboard writes")
+}
+
+@MainActor func testIdleBaselineRoundTripAndPreemption() async throws {
+    let board = NSPasteboard(name: .init("rdh-baseline-roundtrip-\(UUID())"))
+    defer { board.releaseGlobally() }
+    let access = ClipboardAccess(reader: isolationTestReader())
+    var id: UUID?, messages: [String] = []
+    let monitor = DictationPasteMonitor(board: board, access: access, targetPID: { 100 }, isAvailable: { true },
+        onCaptured: { id = $0 }, onError: { fail("\($0)") }, report: { messages.append($0) },
+        diagnostic: { messages.append($0) })
+    defer { monitor.stop() }
+    let owner = try provider(for: board, delay: 0.45)
+    defer { stopFixture(owner) }
+    monitor.scheduleSample()
+    for _ in 0..<200 {
+        if messages.contains(where: { $0.contains("read_ready stage=baseline") }) { break }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    expectTrue(messages.contains(where: { $0.contains("read_ready stage=baseline") }))
+    expectFalse(messages.contains(where: { $0.contains("baseline unavailable") }), "A normal 450ms round trip must not discard the baseline")
+
+    // A stuck idle provider must not hold the capture slot for the full second.
+    let (events, signal) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    let slow = try provider(for: board, delay: 60, onRead: { _ = signal.yield(()) })
+    defer { stopFixture(slow); signal.finish() }
+    monitor.scheduleSample()
+    let reading = await withTaskGroup(of: Bool.self) { group in
+        group.addTask {
+            var iterator = events.makeAsyncIterator()
+            return await iterator.next() != nil
+        }
+        group.addTask {
+            try? await Task.sleep(for: .seconds(2))
+            return false
+        }
+        let result = await group.next() ?? false
+        group.cancelAll()
+        return result
+    }
+    expectTrue(reading, "The named-board provider must enter its read before capture preemption is tested")
+    board.clearContents(); expectTrue(board.setString("NEW DICTATION", forType: .string))
+    let decision = PasteCaptureDecision()
+    monitor.handle(.init(kind: .down, key: 9, command: true, pid: 42, fromDictation: true), decision: decision)
+    let accepted = await Task.detached { decision.wait() }.value
+    expectTrue(accepted, "Cancelled idle read must yield promptly to the ordinary capture budget: \(messages)")
+    let captured = try expectUnwrap(id)
+    monitor.observe(.init(kind: .up, key: 9, command: false, pid: 42, fromDictation: true))
+    board.clearContents(); expectTrue(board.setString("SYNTHETIC-DEFERRED-文字", forType: .string))
+    let result = try await monitor.waitForRelease(captured)
+    expectEqual(result.payload.text, "NEW DICTATION")
+    expectEqual(result.original.text, "SYNTHETIC-DEFERRED-文字")
+    print("Idle baseline: 450ms provider observed without a gap; hung idle reader yields to bounded capture")
 }
 
 /// Accepted input may see a slow remote echo before the source restores its

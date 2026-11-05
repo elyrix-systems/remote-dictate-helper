@@ -44,7 +44,8 @@ outside its client and starts fresh on return.
 
 An idle Screen Sharing baseline read that times out no longer permanently
 excludes that clipboard revision. It can retry after 0.5, 2 and 5 seconds, each
-with the existing 250 ms isolated-reader limit and at most one sample in flight.
+with a one-second idle isolated-reader limit and at most one sample in flight.
+An incoming paste cancels that idle reader; its capture budget remains unchanged.
 After four failures the same revision is left alone until a new revision or a
 new client-focus scope. Oversized data is refused without retries. Recovery
 only records a complete pre-paste snapshot; it never captures an already missed
@@ -158,6 +159,19 @@ saved zero-item original. Whitespace, other formats and older empty snapshots
 do not qualify for this equivalence. `keepsTranscript` is an explicit advanced
 source contract that permits the preceding snapshot after V-up. There is no
 heuristic fallback between these protocols.
+
+Before publishing a captured Screen Sharing payload, the app first suspends
+sharing and retains the cleanup lease. It then confirms the source return again
+under that lease, within the same five-second operation deadline. The target,
+captured payload revision and pre-capture original entry/snapshot must match the
+first result. Only this validated return may establish a fresh replay baseline.
+This tolerates a bridge reply arriving during the sharing-off transition without
+blindly ignoring a changed clipboard. Once the replay baseline is established,
+even an equal-text new copy still invalidates publication; after publication,
+the existing ownership guard protects restoration. Cancellation before any
+clipboard write must still restore the sharing lease. `begin(using:)` retains
+its one-shot behavior for library clients; the app uses `suspendSharing(using:)`
+and `prepareAndSend(using:)` with return validation between them.
 
 During source-return preparation, transient isolated-reader failures or changing
 revisions permit at most four attempts, each capped at 250 ms and the remaining

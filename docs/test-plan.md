@@ -37,6 +37,7 @@ The custom native runner works with Command Line Tools without XCTest.
 | Sharing-off reconfirmation | Idle 450 ms baseline response and cancellation of a blocked idle reader for input capture; suspend/reconfirm/publish ordering; cleanup without any local write; rejection of a different original, unknown data and input; newer equal-text copy refusal after binding the replay baseline. |
 | Windows clipboard preparation | Read before all native keys; named-board text/rich formats unchanged, empty/missing/stale data refused, timeout and cancellation release the caller, one owned reader with reaping on timeout, late completion cannot replay, context changes during reading cancel input. |
 | Completion | Deferred cleanup readiness, single completion attempt, busy refusal and errors. |
+| Completion confirmation | Lost focus/menu observation waits without repeating Send or a toggle; enabled state completes once; a reliably disabled state, changed connection and earlier Send failure remain errors. |
 | Transfer | Clipboard menu order, exact setting transitions, failure recovery, original Send before sharing-on and receipt validation. |
 | Core compatibility | Existing 1.0 library calls and conformers still compile, including fixed-clipboard validation and default preparation. |
 

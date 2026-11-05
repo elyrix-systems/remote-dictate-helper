@@ -87,6 +87,7 @@ struct TestRunner {
         try clipboard.testEmptyOriginalAndReplayIsolation()
         try clipboard.testRichMultilingualPayload()
         try CompletionTests().testDeferredCompletion()
+        try CompletionTests().testReadOnlyConfirmation()
         try await InputTests().testNativeInput()
         let windows = WindowsAppPasteTests()
         try await windows.testAllConfiguredSources()

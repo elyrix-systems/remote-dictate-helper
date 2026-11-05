@@ -398,12 +398,28 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
                     self?.appendLog("shared clipboard completion waiting readiness=\(readiness)")
                 },
                 onFinished: { [weak self] result in
-                    self?.finishSharedClipboardCompletion(result, receipt: receipt)
+                    self?.confirmSharedClipboardCompletion(result, driver: driver, receipt: receipt)
                 }
             )
         } catch {
-            finishSharedClipboardCompletion(.failure(error), receipt: receipt)
+            confirmSharedClipboardCompletion(.failure(error), driver: driver, receipt: receipt)
         }
+    }
+
+    private func confirmSharedClipboardCompletion(_ result: Result<Void, Error>, driver: ScreenSharingClipboardMenu,
+                                                   receipt: LocalClipboardRestoration.Receipt?) {
+        guard case let .failure(error) = result, driver.restorationConfirmationDeferred else {
+            finishSharedClipboardCompletion(result, receipt: receipt); return
+        }
+        appendLog("shared clipboard enable requested; confirmation deferred after menu became unavailable; no action retry")
+        setStatus("Finishing clipboard sync")
+        do {
+            try sharingCompletion.startConfirmation(after: error, observe: { try driver.observeRestoredSharing() },
+                onWaiting: { [weak self] _ in self?.setStatus("Finishing clipboard sync") },
+                onFinished: { [weak self] verified in
+                    self?.finishSharedClipboardCompletion(verified, receipt: receipt)
+                })
+        } catch { finishSharedClipboardCompletion(.failure(error), receipt: receipt) }
     }
 
     private func finishSharedClipboardCompletion(_ result: Result<Void, Error>, receipt: LocalClipboardRestoration.Receipt?) {
@@ -431,7 +447,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
                 sharingRestored = false
             }
             lastError = String(describing: error)
-            setStatus(sharingRestored ? "Error: sharing restored; original clipboard sync failed" : "Error: enable Use Shared Clipboard for the original connection")
+            setStatus(sharingRestored ? "Error: clipboard sync incomplete" : "Error: could not finish clipboard sync")
             appendLog("shared clipboard restore error=\(error)")
         }
         if case .success = result {

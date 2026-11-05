@@ -181,9 +181,18 @@ Input/context cancellation, unrelated readable data and oversized data remain
 terminal. The five-second deadline also rejects an otherwise matching result
 that arrives too late. The recovery does not post keys or write the clipboard.
 
-Successful input allows restoration after 200 ms; partial/failed input retains
+Successful input allows restoration after two seconds; partial/failed input retains
 the five-second protection interval. Those allowances do not establish remote
 consumption. Revision checks, including equal-text copies, protect newer content.
+
+If the sharing-enable request returns but its menu becomes unavailable during
+confirmation, keep the completion obligation and wait for the original target.
+Read-only confirmation resumes when that window and its menu can be observed;
+it never resends the clipboard or toggles sharing again. A stable disabled state,
+a different connection, or an earlier restored-clipboard Send failure remains
+an error. Time spent in another app cannot be interpreted as a disabled setting.
+The status describes pending/incomplete clipboard sync instead of exposing the
+internal Screen Sharing checkbox as a user responsibility.
 
 ## Clipboard provider isolation
 

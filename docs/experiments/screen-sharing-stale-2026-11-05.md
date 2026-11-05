@@ -1,6 +1,7 @@
 # Screen Sharing post-paste retention experiment — 2026-11-05
 
-Status: local investigation branch, not an accepted production fix or release.
+Investigation record. Selected changes are retained for 2.0.1; the physical
+acceptance and remaining evidence limits are recorded below.
 
 The owner reported stale remote text over a slow connection after extended use
 of Screen Sharing, including a failed paste that inserted a message from the
@@ -164,3 +165,21 @@ local restoration, and remains open before release acceptance.
 This short local trial is positive evidence for insertion and preservation; it
 does not establish prolonged stability after idle or eliminate every stale-text
 case. Keep metadata diagnostics on for normal usage of the local candidate.
+
+## Release preparation: 2.0.1
+
+After reporting that subsequent use worked, the owner authorized a release.
+The source-return recovery, sharing-off reconfirmation, one-second idle read
+budget and two-second post-paste allowance are retained. Diagnostic flags remain
+disabled in the downloadable package.
+
+The screenshot of the lingering error corresponded to the final confirmation
+failure above, not a new paste failure. The correction detects lost foreground
+or disabled menu observation after the enable request returns. It keeps the
+lease and performs only read-only confirmation on return to the original
+window. It does not repeat Send Clipboard, re-toggle sharing or activate a
+window. Actual disabled state and earlier Send errors are not hidden. Component
+tests cover these outcomes, including long background intervals and target
+changes. This extra correction has component evidence, not a new physical
+five-phrase trial; the existing insertion/preservation acceptance remains the
+local runtime evidence.

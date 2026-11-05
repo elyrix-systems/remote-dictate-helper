@@ -71,8 +71,8 @@ struct LocalClipboardSnapshot: Equatable {
 @MainActor
 final class LocalClipboardRestoration {
     static let remotePasteAllowance: TimeInterval = 5
-    // Local experiment: vary only post-paste retention, not send-to-paste timing.
-    // A longer allowance is still not acknowledgement of remote consumption.
+    // Keep the payload available after posting; this allowance is still not
+    // acknowledgement of remote consumption and does not delay the initial paste.
     static let pasteAllowance: TimeInterval = 2
 
     /// Proof of this restore's exact revision and all original formats. It is

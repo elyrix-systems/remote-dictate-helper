@@ -160,7 +160,7 @@ func testAsyncCaptureAndExpiredDecision() async throws {
     let baseline = try restore.captureReplayBaseline(releasedRevision: result.releasedRevision, session: session)
     try restore.writeCapturedSnapshot(result.payload.snapshot, text: result.payload.text, session: session, replacing: baseline)
     restore.recordPastePosted(session); restore.finish(session)
-    clock = 0.2; restore.restoreIfDue()
+    clock = 2; restore.restoreIfDue()
     expectEqual(board.string(forType: .string), "ORIGINAL")
     expectTrue(errors.isEmpty)
     monitor.discard(captured); id = nil

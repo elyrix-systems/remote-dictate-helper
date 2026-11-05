@@ -71,8 +71,9 @@ struct LocalClipboardSnapshot: Equatable {
 @MainActor
 final class LocalClipboardRestoration {
     static let remotePasteAllowance: TimeInterval = 5
-    // Accepted successful-paste allowance; posting itself is not a remote ACK.
-    static let pasteAllowance: TimeInterval = 0.2
+    // Local experiment: vary only post-paste retention, not send-to-paste timing.
+    // A longer allowance is still not acknowledgement of remote consumption.
+    static let pasteAllowance: TimeInterval = 2
 
     /// Proof of this restore's exact revision and all original formats. It is
     /// valid only while the clipboard is unchanged, even for an equal-text copy.
@@ -116,6 +117,7 @@ final class LocalClipboardRestoration {
     private let board: NSPasteboard
     private let access: ClipboardAccess
     private let now: () -> TimeInterval
+    private let successfulPasteAllowance: TimeInterval
     private let onOutcome: (Outcome, Receipt?) -> Void
     private var pending: (session: Session, deadline: TimeInterval)?
     private var timer: Timer?
@@ -125,11 +127,15 @@ final class LocalClipboardRestoration {
         board: NSPasteboard = .general,
         access: ClipboardAccess = .shared,
         now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        successfulPasteAllowance: TimeInterval = LocalClipboardRestoration.pasteAllowance,
         onOutcome: @escaping (Outcome, Receipt?) -> Void = { _, _ in }
     ) {
         self.board = board
         self.access = access
         self.now = now
+        precondition(successfulPasteAllowance.isFinite && successfulPasteAllowance > 0
+                     && successfulPasteAllowance <= Self.remotePasteAllowance)
+        self.successfulPasteAllowance = successfulPasteAllowance
         self.onOutcome = onOutcome
     }
 
@@ -173,7 +179,7 @@ final class LocalClipboardRestoration {
     }
 
     func allowance(for session: Session) -> TimeInterval {
-        session.pastePosted ? Self.pasteAllowance : Self.remotePasteAllowance
+        session.pastePosted ? successfulPasteAllowance : Self.remotePasteAllowance
     }
 
     /// Also used after an error: a partial key post can still reach the remote

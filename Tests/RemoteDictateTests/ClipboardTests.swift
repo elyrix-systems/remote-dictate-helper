@@ -2,6 +2,41 @@ import AppKit
 import RemoteDictateCore
 
 final class ClipboardTests {
+    /// Model a remote consumer that reads 500 ms after key posting. The actual
+    /// clipboard/lifetime code is used on a named board; delivery and consumption
+    /// are simulated. This proves a possible ordering race, not the OS incident.
+    @MainActor func testDelayedConsumerRetention() throws {
+        let board = NSPasteboard(name: .init("rdh-delayed-consumer-\(UUID())"))
+        defer { board.releaseGlobally() }
+        for hold in [0.2, 2.0] {
+            var clock: TimeInterval = 0
+            var remoteText = "ORIGINAL", outcomes = 0
+            let restore = LocalClipboardRestoration(board: board, access: eagerTestClipboardAccess(),
+                now: { clock }, successfulPasteAllowance: hold, onOutcome: { outcome, receipt in
+                    expectEqual(outcome, .restored); expectNotNil(receipt)
+                    outcomes += 1
+                    remoteText = board.string(forType: .string) ?? ""
+                })
+            func copy(_ value: String) { board.clearContents(); expectTrue(board.setString(value, forType: .string)) }
+            copy("ORIGINAL")
+            let original = try LocalClipboardSnapshot.capture(board)
+            let session = try restore.begin(observedOriginal: original)
+            let baseline = try restore.captureReplayBaseline(releasedRevision: board.changeCount, session: session)
+            let payload = LocalClipboardSnapshot(items: [[.init(type: .string, data: Data("CURRENT".utf8))]])
+            try restore.writeCapturedSnapshot(payload, text: "CURRENT", session: session, replacing: baseline)
+            remoteText = "CURRENT" // Simulated delivery before the posted key is consumed.
+            restore.recordPastePosted(session); restore.finish(session)
+            clock = 0.5; restore.restoreIfDue()
+            expectEqual(remoteText, hold < 0.5 ? "ORIGINAL" : "CURRENT")
+            expectEqual(outcomes, hold < 0.5 ? 1 : 0)
+            clock = 2; restore.restoreIfDue()
+            expectEqual(outcomes, 1)
+            expectEqual(try LocalClipboardSnapshot.capture(board), original)
+            expectEqual(remoteText, "ORIGINAL")
+        }
+        print("Delayed consumer model: 200ms can expose original; 2s retains current at 500ms; exact single restoration, no real remote input")
+    }
+
     @MainActor func testRestorationOwnershipFormatsAndDeadlines() throws {
         let board = NSPasteboard(name: .init("rdh-clipboard-\(UUID())")); defer { board.releaseGlobally() }
         var clock: TimeInterval = 0
@@ -27,7 +62,7 @@ final class ClipboardTests {
                 let baseline = try restore.captureReplayBaseline(releasedRevision: board.changeCount, session: session)
                 try restore.writeCapturedSnapshot(payload.snapshot, text: payload.text, session: session, replacing: baseline)
                 if success { restore.recordPastePosted(session) }
-                let allowance: TimeInterval = success ? 0.2 : 5
+                let allowance: TimeInterval = success ? 2 : 5
                 expectEqual(restore.allowance(for: session), allowance)
                 let deadline = clock + allowance
                 restore.finish(session)
@@ -99,7 +134,7 @@ final class ClipboardTests {
         let second = try restore.begin(observedOriginal: empty)
         expectThrows(try restore.writeCapturedSnapshot(payload.snapshot, text: payload.text, session: second, replacing: baseline))
         try restore.writeCapturedSnapshot(payload.snapshot, text: payload.text, session: first, replacing: baseline)
-        restore.recordPastePosted(first); restore.finish(first); clock = 0.2; restore.restoreIfDue()
+        restore.recordPastePosted(first); restore.finish(first); clock = 2; restore.restoreIfDue()
         expectEqual(try LocalClipboardSnapshot.capture(board), empty)
         expectThrows(try restore.writeCapturedSnapshot(payload.snapshot, text: payload.text, session: first, replacing: baseline))
         board.clearContents(); board.setString("oversized", forType: .string)

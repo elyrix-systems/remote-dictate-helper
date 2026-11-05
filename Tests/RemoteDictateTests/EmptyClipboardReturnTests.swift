@@ -57,7 +57,7 @@ final class EmptyClipboardReturnTests {
             // Model successful posting; no real input is sent by this test.
             restore.recordPastePosted(session)
             restore.finish(session)
-            time += 0.2
+            time += 2
             restore.restoreIfDue()
             expectEqual(outcomes.count, attempt)
             expectEqual(outcomes.last, .restored)

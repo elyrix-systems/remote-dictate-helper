@@ -79,6 +79,7 @@ struct TestRunner {
         interception.testSlowCapturePassesOriginalThrough()
         interception.testInterceptedReplayNeverDeletes()
         let clipboard = ClipboardTests()
+        try clipboard.testDelayedConsumerRetention()
         try clipboard.testRestorationOwnershipFormatsAndDeadlines()
         try clipboard.testEmptyOriginalAndReplayIsolation()
         try clipboard.testRichMultilingualPayload()

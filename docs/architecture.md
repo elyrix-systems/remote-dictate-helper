@@ -159,6 +159,14 @@ do not qualify for this equivalence. `keepsTranscript` is an explicit advanced
 source contract that permits the preceding snapshot after V-up. There is no
 heuristic fallback between these protocols.
 
+During source-return preparation, transient isolated-reader failures or changing
+revisions permit at most four attempts, each capped at 250 ms and the remaining
+release budget. An unchanged failed revision gets a 50 ms pause; a replacement
+can be read immediately. Matching still uses the pre-capture original snapshots.
+Input/context cancellation, unrelated readable data and oversized data remain
+terminal. The five-second deadline also rejects an otherwise matching result
+that arrives too late. The recovery does not post keys or write the clipboard.
+
 Successful input allows restoration after 200 ms; partial/failed input retains
 the five-second protection interval. Those allowances do not establish remote
 consumption. Revision checks, including equal-text copies, protect newer content.

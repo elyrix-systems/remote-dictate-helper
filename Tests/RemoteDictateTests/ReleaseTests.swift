@@ -46,7 +46,12 @@ final class ReleaseTests {
                 let revision = board.changeCount
                 clock = 0.5
                 let first = try monitor.completeIfReleased(id)
-                if keyUp && clipboardReturned { expectNotNil(first) }
+                if keyUp && clipboardReturned {
+                    expectNotNil(first)
+                    clock = 5
+                    do { _ = try monitor.completeIfReleased(id); fail("Even a matching result cannot replay after the deadline") }
+                    catch DictationCaptureError.releaseTimeout { }
+                }
                 else {
                     expectNil(first)
                     clock = 5

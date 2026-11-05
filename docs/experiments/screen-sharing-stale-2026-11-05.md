@@ -38,7 +38,7 @@ protection and the five-second fallback for incomplete input.
 Production evidence: the captured operation and two local send times above,
 plus the owner's stale-result report. No causal fix has been established.
 
-This branch changes only the successful post-paste retention allowance from
+The initial candidate changes only the successful post-paste retention allowance from
 200 ms to two seconds. It does not add a delay before Paste, an extra paste,
 Backspace, client activation, a source-specific path or a Windows clipboard
 write. Newer local copies retain ownership and are never overwritten. The
@@ -60,3 +60,47 @@ the source operation, remote result and available client/remote timing before
 resetting the connection. A successful short trial does not establish stability
 after an hour or solve every failure. Roll back the local candidate if it adds
 regressions. Raw logs remain private and are not included in this document.
+
+## 200.1.1 trial: third dictation stopped before replay
+
+The owner reported two successful short phrases, one missing third phrase, and
+a successful repeat of that third phrase. The local original marker remained
+correct. The failed attempt was captured, but it never reached Send Clipboard
+or native replay, so the two-second post-paste hold had not started.
+
+Detailed metadata and native logs established this sequence:
+
+- The source paste was accepted and its key-up observed.
+- Screen Sharing published a delayed remote clipboard promise about 140 ms later.
+- Reading that intermediate return exhausted the 250 ms isolated-reader limit.
+  The helper aborted the entire operation about 419 ms after capture.
+- Flow published the original approximately 60 ms after the abort; the remote
+  promise itself completed later. The repeated dictation then succeeded.
+
+The missing phrase is thus a premature source-return read failure, distinct
+from the earlier stale-text symptom. This short trial does not establish that
+the longer post-paste hold fixes stale remote text.
+
+## 200.1.2: bounded recovery while waiting for source return
+
+Risky assumption: an unreadable or changing intermediate clipboard can be
+followed by the actual source return while the accepted paste remains valid.
+The native sequence above is production evidence for that order. Local tests
+use real delayed named-board providers and a subsequent original revision;
+they recover without posting input or touching the general clipboard.
+
+The candidate permits at most four read attempts for an accepted operation,
+with at most 250 ms per attempt and a 50 ms pause only if the failed revision
+is unchanged. All attempts share the original five-second release deadline.
+The deadline is checked before accepting a matching result as well as before
+each read, so a late successful provider cannot authorize delayed replay.
+Input, focus, stopped-monitor and task-cancellation guards remain active.
+An unknown readable return or oversized data still fails immediately; the
+original is never guessed. No clipboard write or key retry is added.
+
+Regression checks cover delayed same-revision data, a replacement return,
+revision changes between read and validation, permanently blocked providers,
+input/focus cancellation, deadline expiry and unrelated new copies.
+Two-second post-paste retention remains in this investigation build, keeping
+the next physical comparison focused on source-return recovery. Physical
+acceptance of 200.1.2 is pending.

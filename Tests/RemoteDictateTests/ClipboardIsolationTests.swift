@@ -217,3 +217,75 @@ private func isolationTestReader() -> IsolatedClipboardReader {
     expectEqual(board.changeCount, revision)
     print("Actual deferred provider: first isolated reader times out; same-revision baseline recovers without input or clipboard writes")
 }
+
+/// Accepted input may see a slow remote echo before the source restores its
+/// clipboard. All providers here run on disposable named boards in owned children.
+@MainActor func testSourceReturnReadRecovery() async throws {
+    enum Scenario: CaseIterable { case sameRevision, replacement, readRace, input, focus, deadline, permanent, unmatched }
+    for scenario in Scenario.allCases {
+        let board = NSPasteboard(name: .init("rdh-return-recovery-\(UUID())"))
+        defer { board.releaseGlobally() }
+        let access = ClipboardAccess(reader: isolationTestReader())
+        let original = "SYNTHETIC-DEFERRED-文字"
+        var clock: TimeInterval = 0, target: pid_t? = 100
+        var captured: UUID?, captures = 0, failures = 0
+        var raced = false
+        weak var observedMonitor: DictationPasteMonitor?
+        func copy(_ text: String) { board.clearContents(); expectTrue(board.setString(text, forType: .string)) }
+        let monitor = DictationPasteMonitor(board: board, access: access, targetPID: { target },
+            isAvailable: { true }, now: { clock }, onCaptured: { captured = $0; captures += 1 },
+            onError: { fail("Unexpected capture error: \($0)") }, report: { message in
+                guard message.hasPrefix("source return read failed") else { return }
+                failures += 1
+                guard failures == 1 else { return }
+                switch scenario {
+                case .replacement: copy(original)
+                case .input: observedMonitor?.observe(.init(kind: .mouse, key: 0, command: false, pid: 7, fromDictation: false))
+                case .focus: target = nil
+                case .deadline: copy(original); clock = 5
+                case .unmatched: copy("UNRELATED NEW COPY")
+                default: break
+                }
+            }, diagnostic: { message in
+                if scenario == .readRace, !raced, message.contains("clipboard.read_ready stage=source-return") {
+                    raced = true; copy(original)
+                }
+            })
+        observedMonitor = monitor
+        defer { monitor.stop() }
+        copy(original); try await access.prepare(board); monitor.sample()
+        let originalSnapshot = try access.read(board).snapshot
+        copy("CURRENT TRANSCRIPT"); try await access.prepare(board)
+        expectTrue(monitor.observe(.init(kind: .down, key: 9, command: true, pid: 42, fromDictation: true)))
+        let id = try expectUnwrap(captured)
+        expectTrue(monitor.observe(.init(kind: .up, key: 9, command: false, pid: 42, fromDictation: true)))
+        let delay: TimeInterval = scenario == .sameRevision ? 0.6 : scenario == .readRace ? 0.025 : 60
+        let owner = try provider(for: board, delay: delay)
+        defer { stopFixture(owner) }
+        let slowRevision = board.changeCount
+        do {
+            let result = try await monitor.waitForRelease(id)
+            expectTrue(scenario == .sameRevision || scenario == .replacement || scenario == .readRace)
+            expectEqual(result.payload.text, "CURRENT TRANSCRIPT")
+            expectEqual(result.original.snapshot, originalSnapshot)
+            expectEqual(result.releasedRevision, board.changeCount)
+            if scenario == .sameRevision { expectEqual(board.changeCount, slowRevision) }
+            else { expectTrue(board.changeCount != slowRevision) }
+        } catch let error as DictationCaptureError {
+            switch (scenario, error) {
+            case (.input, .inputChanged), (.focus, .targetChanged), (.deadline, .releaseTimeout), (.unmatched, .originalUnknown): break
+            default: fail("Unexpected source-return failure for \(scenario): \(error)")
+            }
+        } catch IsolatedClipboardError.timedOut {
+            expectEqual(scenario, .permanent)
+        }
+        expectTrue(failures > 0 && failures <= 4)
+        if scenario == .permanent { expectEqual(failures, 4) }
+        if scenario == .unmatched {
+            expectEqual(board.string(forType: .string), "UNRELATED NEW COPY", "Do not overwrite an unmatched return")
+        }
+        expectEqual(captures, 1, "Recovery cannot synthesize a second capture")
+        monitor.discard(id)
+    }
+    print("Source return: real delayed/changed providers recover; read budget, input/focus, deadline and unknown-copy guards remain")
+}

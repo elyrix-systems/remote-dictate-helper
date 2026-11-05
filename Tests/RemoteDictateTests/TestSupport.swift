@@ -36,6 +36,7 @@ struct TestRunner {
         try await testIsolatedClipboardReading()
         try await testAsyncCaptureAndExpiredDecision()
         try await testDeferredBaselineRecovery()
+        try await testSourceReturnReadRecovery()
         if CommandLine.arguments.contains("--isolation-only") { return }
         try await testBaselineRecoveryBudget()
         testCaptureDecisionDeadline()

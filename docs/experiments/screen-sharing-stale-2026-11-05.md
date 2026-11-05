@@ -144,3 +144,23 @@ after that phase still require physical testing. No remote acknowledgement,
 automatic key retry, Backspace or permanently disabled sharing is introduced.
 Two-second post-paste retention remains experimental. Acceptance of 200.1.3 is
 pending; do not promote it solely on component-test results.
+
+## 200.1.3: five-phrase insertion and local preservation passed
+
+The owner confirmed all five phrases arrived exactly once without missing or
+stale text or a leading character, and the local original marker was preserved.
+For the corresponding five captures, metadata records five single native paste
+sequences and five local restorations. Two operations recovered from source-return
+read failures. One also reconfirmed the same original after a revision change
+during sharing suspension, exercising the new path in real use.
+
+The final operation reported an unconfirmed sharing-on state when focus moved
+to a local app during confirmation: the menu commands became disabled. Later
+native Screen Sharing logs show automatic clipboard traffic, consistent with
+sharing having resumed despite that confirmation error. No blind toggle was
+performed. This is a separate completion-status concern, not a failed paste or
+local restoration, and remains open before release acceptance.
+
+This short local trial is positive evidence for insertion and preservation; it
+does not establish prolonged stability after idle or eliminate every stale-text
+case. Keep metadata diagnostics on for normal usage of the local candidate.

@@ -94,6 +94,15 @@ public struct ExplicitClipboardTransfer {
     public init() {}
 
     public func begin(using driver: any ExplicitClipboardTransferDriver) throws -> SharedClipboardTransferLease {
+        let lease = try suspendSharing(using: driver)
+        do { try prepareAndSend(using: driver) }
+        catch { try lease.restoreSharing(after: error); throw error }
+        return lease
+    }
+
+    /// The caller may asynchronously revalidate the returned original while
+    /// sharing is off. It must retain and restore the lease on every exit.
+    public func suspendSharing(using driver: any ExplicitClipboardTransferDriver) throws -> SharedClipboardTransferLease {
         try driver.validateTargetAndClipboard()
         guard try driver.readState().sharedClipboardEnabled else {
             throw ExplicitClipboardTransferError.sharedClipboardInitiallyOff
@@ -106,23 +115,30 @@ public struct ExplicitClipboardTransfer {
             guard !state.sharedClipboardEnabled else {
                 throw SharedClipboardSettingError.unconfirmed(expected: false, observed: state)
             }
-            try driver.validateTargetAndClipboard()
-            try driver.prepareClipboard()
-            try driver.validateTargetAndClipboard()
-            let preparedState = try driver.readState()
-            guard !preparedState.sharedClipboardEnabled else {
-                throw SharedClipboardSettingError.unconfirmed(expected: false, observed: preparedState)
-            }
-            guard preparedState.sendClipboardEnabled else {
-                throw ExplicitClipboardTransferError.sendUnavailable
-            }
-            try driver.sendClipboard()
-            try driver.validateTargetAndClipboard()
         } catch {
             // A failed toggle or Send can already have affected the other app.
             try lease.restoreSharing(after: error)
             throw error
         }
         return lease
+    }
+
+    /// Only after the caller has revalidated the original under the held lease.
+    /// No automatic retry; the caller still owns cleanup if this throws.
+    public func prepareAndSend(using driver: any ExplicitClipboardTransferDriver) throws {
+        let state = try driver.readState()
+        guard !state.sharedClipboardEnabled else {
+            throw SharedClipboardSettingError.unconfirmed(expected: false, observed: state)
+        }
+        try driver.validateTargetAndClipboard()
+        try driver.prepareClipboard()
+        try driver.validateTargetAndClipboard()
+        let preparedState = try driver.readState()
+        guard !preparedState.sharedClipboardEnabled else {
+            throw SharedClipboardSettingError.unconfirmed(expected: false, observed: preparedState)
+        }
+        guard preparedState.sendClipboardEnabled else { throw ExplicitClipboardTransferError.sendUnavailable }
+        try driver.sendClipboard()
+        try driver.validateTargetAndClipboard()
     }
 }

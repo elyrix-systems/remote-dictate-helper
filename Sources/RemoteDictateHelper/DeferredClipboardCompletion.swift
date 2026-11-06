@@ -1,14 +1,42 @@
 import Foundation
+import RemoteDictateCore
+
+enum ClipboardSharingObservation {
+    case waitingForTarget, waitingForMenu, enabled, disabled
+}
+
+/// Read-only confirmation after an enable request lost its observable menu.
+/// Time spent outside the original target never proves that sharing is off.
+@MainActor
+final class ClipboardSharingConfirmation {
+    private let now: () -> TimeInterval
+    private var availableSince: TimeInterval?
+    init(now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) { self.now = now }
+
+    func readiness(_ observation: ClipboardSharingObservation) throws -> ClipboardCompletionReadiness {
+        switch observation {
+        case .waitingForTarget: availableSince = nil; return .waitingForTarget
+        case .waitingForMenu: availableSince = nil; return .waitingForMenu
+        case .enabled: return .ready
+        case .disabled:
+            let time = now()
+            if availableSince == nil { availableSince = time }
+            guard time - availableSince! < 1 else { throw ClipboardCompletionError.sharingUnconfirmed }
+            return .waitingForMenu
+        }
+    }
+}
 
 enum ClipboardCompletionReadiness: Equatable {
     case ready, waitingForTarget, waitingForMenu
 }
 
 enum ClipboardCompletionError: Error, CustomStringConvertible {
-    case alreadyPending
+    case alreadyPending, sharingUnconfirmed
     var description: String {
         switch self {
         case .alreadyPending: "Clipboard completion is already pending."
+        case .sharingUnconfirmed: "Clipboard sync could not be confirmed for the original connection."
         }
     }
 }
@@ -50,6 +78,20 @@ final class DeferredClipboardCompletion {
             RunLoop.main.add(timer, forMode: .common)
         }
         poll()
+    }
+
+    /// Verification only: never calls the original action again. Preserve a
+    /// preceding restored-clipboard Send failure even when sharing is enabled.
+    func startConfirmation(after error: Error,
+                           observe: @escaping () throws -> ClipboardSharingObservation,
+                           now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+                           onWaiting: @escaping (ClipboardCompletionReadiness) -> Void,
+                           onFinished: @escaping (Result<Void, Error>) -> Void) throws {
+        guard case let ExplicitClipboardTransferError.restorationFailed(operation, _) = error else { throw error }
+        let confirmation = ClipboardSharingConfirmation(now: now)
+        try start(probe: { try confirmation.readiness(observe()) }, complete: {
+            if let operation { throw ExplicitClipboardTransferError.restoredClipboardSendFailed(operation) }
+        }, onWaiting: onWaiting, onFinished: onFinished)
     }
 
     /// Separate from scheduling for deterministic, no-UI tests.

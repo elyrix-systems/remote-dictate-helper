@@ -28,6 +28,12 @@ final class DictationPasteMonitor {
         let original: ClipboardBaselineHistory.Entry
         let releasedRevision: Int
         let targetPID: pid_t
+
+        func validateContinuation(of captured: Self) throws {
+            guard targetPID == captured.targetPID, payload.revision == captured.payload.revision,
+                  original.revision == captured.original.revision,
+                  original.snapshot == captured.original.snapshot else { throw LocalClipboardError.changed }
+        }
     }
     private struct Pending {
         let id: UUID
@@ -182,7 +188,9 @@ final class DictationPasteMonitor {
             guard let self else { return }
             defer { if generation == token { sampleTask = nil } }
             do {
-                try await access.prepare(board)
+                // Idle preparation may need a remote round trip. This does not
+                // enlarge the input-tap budget: capture cancels this owned read.
+                try await access.prepare(board, timeout: 1)
                 try Task.checkCancellation()
                 guard generation == token, pending == nil, targetPID() == target, isAvailable(),
                       board.changeCount == revision else { return }
@@ -344,6 +352,7 @@ final class DictationPasteMonitor {
     func completeIfReleased(_ id: UUID) throws -> Result? {
         try validate(id)
         guard let current = pending, current.id == id else { throw CancellationError() }
+        _ = try releaseTimeRemaining(current)
         let revision = board.changeCount
         let second = Int(now() - current.started)
         if second != current.reportedWaitSecond {
@@ -379,27 +388,59 @@ final class DictationPasteMonitor {
                     targetPID: current.targetPID)
             }
         }
-        guard now() - current.started < 5 else {
+        return nil
+    }
+    func waitForRelease(_ id: UUID) async throws -> Result {
+        var readFailures = 0
+        while true {
+            try Task.checkCancellation()
+            try validate(id)
+            guard let current = pending, current.id == id else { throw CancellationError() }
+            let remaining = try releaseTimeRemaining(current)
+            let revision = board.changeCount
+            do {
+                if current.keyUp, revision != current.payload.revision {
+                    diagnostic("op=\(id) clipboard.read_begin stage=source-return revision=\(revision)")
+                    // Keep each provider isolated and short-lived. A remote
+                    // echo can precede the source's actual return; one failed
+                    // read must not discard an otherwise valid captured paste.
+                    try await access.prepare(board, timeout: min(0.25, remaining))
+                    try validate(id)
+                    diagnostic("op=\(id) clipboard.read_ready stage=source-return revision=\(revision)")
+                }
+                if let result = try completeIfReleased(id) { return result }
+            } catch {
+                try Task.checkCancellation()
+                try validate(id)
+                _ = try releaseTimeRemaining(current)
+                switch error {
+                case is IsolatedClipboardError, LocalClipboardError.changed: break
+                default: throw error // Unknown data, size and context failures remain terminal.
+                }
+                readFailures += 1
+                let retry = readFailures < 4
+                report("source return read failed revision=\(revision) currentRevision=\(board.changeCount) attempt=\(readFailures) retry=\(retry): \(error)")
+                diagnostic("op=\(id) clipboard.read_failed stage=source-return revision=\(revision) attempt=\(readFailures) retry=\(retry) error=\(error)")
+                guard retry else { throw error }
+                // A new generation is immediately eligible; an unchanged
+                // provider gets a short pause, never a tight retry loop.
+                if board.changeCount == revision {
+                    try await Task.sleep(for: .milliseconds(50))
+                }
+                continue
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+    private func releaseTimeRemaining(_ current: Pending) throws -> TimeInterval {
+        let remaining = 5 - (now() - current.started)
+        guard remaining > 0 else {
+            let revision = board.changeCount
             trace(current, "cancel reason=\(current.keyUp ? "clipboard_return_timeout" : "source_v_up_timeout") keyUp=\(current.keyUp)")
             report("release timeout keyUp=\(current.keyUp) clipboardChanged=\(revision != current.payload.revision) payloadRevision=\(current.payload.revision) currentRevision=\(revision) returnPolicy=\(current.clipboardReturn.rawValue)")
             throw current.keyUp ? DictationCaptureError.releaseTimeout : DictationCaptureError.pasteKeyUpTimeout
         }
-        return nil
-    }
-    func waitForRelease(_ id: UUID) async throws -> Result {
-        while true {
-            try Task.checkCancellation()
-            try validate(id)
-            if let current = pending, current.keyUp, board.changeCount != current.payload.revision {
-                let revision = board.changeCount
-                diagnostic("op=\(id) clipboard.read_begin stage=source-return revision=\(revision)")
-                try await access.prepare(board)
-                try validate(id)
-                diagnostic("op=\(id) clipboard.read_ready stage=source-return revision=\(revision)")
-            }
-            if let result = try completeIfReleased(id) { return result }
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        return remaining
     }
     func validate(_ id: UUID) throws {
         guard filterHealthy, filter?.isStopped != true else { throw DictationCaptureError.filterDisabled }

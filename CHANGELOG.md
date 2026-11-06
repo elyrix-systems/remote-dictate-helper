@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.0.1 — 2026-11-05
+
+- Improve consecutive dictation pastes in Apple Screen Sharing when clipboard
+  data arrives slowly or changes during synchronization. Prepare originals in
+  the background, recover bounded source-return reads and reconfirm the same
+  original after pausing sharing before publishing a transcript.
+- Keep the captured clipboard available for two seconds after posting Paste,
+  then restore the original. Newer user copies remain protected; no additional
+  paste or Backspace is sent.
+- Confirm clipboard synchronization when the original remote window is
+  observable again after a focus change. This verification only reads state;
+  it never repeats a clipboard send or toggle. Replace the misleading request
+  to manually enable an internal Screen Sharing setting with a sync status.
+- Add regression coverage for slow providers, changing revisions, cancellation,
+  original preservation and focus-sensitive completion.
+
+The owner confirmed five consecutive Flow phrases and preserved local clipboard
+contents on local build 200.1.3; logs exercised read recovery and reconfirmation
+after a changed revision. The completion-status correction additionally passed
+component tests. This short trial does not establish every long-idle or network
+scenario. Windows App's paste protocol is unchanged. Downloads are Developer ID
+signed and Apple notarized, with diagnostic logging disabled.
+
 ## 2.0.0 — 2026-11-03
 
 - Distribute the app with the organization's Developer ID signature, hardened

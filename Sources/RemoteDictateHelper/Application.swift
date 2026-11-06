@@ -249,6 +249,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
                 stage = "replay-and-restore"
                 trace("begin")
                 try await self.replay(captured, session: session, target: target, window: window,
+                    confirmReturn: { try await monitor.waitForRelease(id) },
                     validateInput: { try monitor.validate(id) })
                 trace("replay-finished; clipboard completion may still be pending")
             } catch is CancellationError { trace("cancel reason=task_cancelled"); self.appendLog("operation cancelled") }
@@ -268,10 +269,12 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         setStatus("Idle"); appendLog("operation \(id) cancelled: \(reason); stage=\(stage); no retry or deferred paste")
     }
     private func replay(_ captured: DictationPasteMonitor.Result, session: LocalClipboardRestoration.Session,
-                        target: NSRunningApplication, window: AXUIElement, validateInput: () throws -> Void) async throws {
+                        target: NSRunningApplication, window: AXUIElement,
+                        confirmReturn: () async throws -> DictationPasteMonitor.Result,
+                        validateInput: () throws -> Void) async throws {
         let payload = captured.payload
         try validateInput()
-        let baseline = try clipboardRestoration.captureReplayBaseline(releasedRevision: captured.releasedRevision, session: session)
+        var baseline: LocalClipboardRestoration.ReplayBaseline?
         let input = ExplicitPasteShortcut(isolatedSoftwareCommand: true,
             interceptedPaste: true,
             report: { [weak self] in self?.appendLog("input \($0)") })
@@ -281,12 +284,24 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
         try Task.checkCancellation(); try validateInput()
         let driver = try ScreenSharingClipboardMenu(target: target, transcript: payload.text,
             expectedWindow: window, input: input, writeTranscript: { [clipboardRestoration] _ in
+                guard let baseline else { throw LocalClipboardError.changed }
                 try clipboardRestoration.writeCapturedSnapshot(payload.snapshot, text: payload.text, session: session, replacing: baseline)
             }, validateTranscript: { [clipboardRestoration] in
                 try clipboardRestoration.validateOwned(session)
             }, trace: { [weak self] in self?.appendLog("clipboard menu \($0)") })
-        sharedClipboardLease = try ExplicitClipboardTransfer().begin(using: driver)
+        let transfer = ExplicitClipboardTransfer()
+        sharedClipboardLease = try transfer.suspendSharing(using: driver)
         sharedClipboardDriver = driver; completionPastePosted = false; contextCancelled = false
+        // A delayed bridge reply may arrive while the off toggle is in flight.
+        // Read again under the lease, within the original capture deadline, and
+        // require the SAME pre-capture original before permitting publication.
+        let confirmed = try await confirmReturn()
+        try validateInput(); try ScreenSharingClipboardMenu.validateWindow(target: target, expected: window)
+        try confirmed.validateContinuation(of: captured)
+        baseline = try clipboardRestoration.captureReplayBaseline(releasedRevision: confirmed.releasedRevision, session: session)
+        try driver.acceptRevalidatedReturn(revision: confirmed.releasedRevision)
+        try validateInput()
+        try transfer.prepareAndSend(using: driver)
         let paste = GuardedPaste().run(targetPID: target.processIdentifier, shortcut: input,
             validateBeforeInput: { try validateInput(); try driver.validateTargetAndClipboard() })
         completionPastePosted = paste.didRun
@@ -357,6 +372,12 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
     private func finishClipboardSession() {
         guard let session = clipboardSession else { return }
         clipboardSession = nil
+        // Suspension may succeed before any clipboard publication. That lease
+        // still needs recovery, even though there is no local write to restore.
+        if session.ownedRevision == nil {
+            restoreSharedClipboardAfterLocalCompletion()
+            return
+        }
         clipboardRestoration.finish(session)
     }
 
@@ -377,12 +398,28 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
                     self?.appendLog("shared clipboard completion waiting readiness=\(readiness)")
                 },
                 onFinished: { [weak self] result in
-                    self?.finishSharedClipboardCompletion(result, receipt: receipt)
+                    self?.confirmSharedClipboardCompletion(result, driver: driver, receipt: receipt)
                 }
             )
         } catch {
-            finishSharedClipboardCompletion(.failure(error), receipt: receipt)
+            confirmSharedClipboardCompletion(.failure(error), driver: driver, receipt: receipt)
         }
+    }
+
+    private func confirmSharedClipboardCompletion(_ result: Result<Void, Error>, driver: ScreenSharingClipboardMenu,
+                                                   receipt: LocalClipboardRestoration.Receipt?) {
+        guard case let .failure(error) = result, driver.restorationConfirmationDeferred else {
+            finishSharedClipboardCompletion(result, receipt: receipt); return
+        }
+        appendLog("shared clipboard enable requested; confirmation deferred after menu became unavailable; no action retry")
+        setStatus("Finishing clipboard sync")
+        do {
+            try sharingCompletion.startConfirmation(after: error, observe: { try driver.observeRestoredSharing() },
+                onWaiting: { [weak self] _ in self?.setStatus("Finishing clipboard sync") },
+                onFinished: { [weak self] verified in
+                    self?.finishSharedClipboardCompletion(verified, receipt: receipt)
+                })
+        } catch { finishSharedClipboardCompletion(.failure(error), receipt: receipt) }
     }
 
     private func finishSharedClipboardCompletion(_ result: Result<Void, Error>, receipt: LocalClipboardRestoration.Receipt?) {
@@ -410,7 +447,7 @@ final class RemoteDictateApp: NSObject, NSApplicationDelegate {
                 sharingRestored = false
             }
             lastError = String(describing: error)
-            setStatus(sharingRestored ? "Error: sharing restored; original clipboard sync failed" : "Error: enable Use Shared Clipboard for the original connection")
+            setStatus(sharingRestored ? "Error: clipboard sync incomplete" : "Error: could not finish clipboard sync")
             appendLog("shared clipboard restore error=\(error)")
         }
         if case .success = result {

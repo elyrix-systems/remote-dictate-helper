@@ -5,7 +5,7 @@ enum ScreenSharingClipboardMenuError: Error, CustomStringConvertible {
     case targetChanged, emptyClipboard, clipboardChanged, menuUnavailable
     case accessibility(operation: String, code: Int32)
     case restoredSendUnavailable
-    case commandDisabled(String)
+    case commandDisabled(String), restorationObservationUnavailable
 
     var description: String {
         switch self {
@@ -15,6 +15,7 @@ enum ScreenSharingClipboardMenuError: Error, CustomStringConvertible {
         case .menuUnavailable: "Screen Sharing clipboard menu is not exposed through Accessibility."
         case .restoredSendUnavailable: "Send Clipboard is unavailable for the restored local snapshot."
         case let .commandDisabled(command): "Screen Sharing command is disabled: \(command)."
+        case .restorationObservationUnavailable: "Clipboard sync confirmation is waiting for the original connection."
         case let .accessibility(operation, code): "Screen Sharing Accessibility \(operation) failed (\(code))."
         }
     }
@@ -28,7 +29,7 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
     private let application: AXUIElement
     private let window: AXUIElement
     private let clipboardText: String
-    private let initialClipboardChangeCount: Int
+    private var initialClipboardChangeCount: Int
     private let writeTranscript: (String) throws -> Void
     private let validateTranscript: () throws -> Void
     private var preparedTranscript = false
@@ -37,6 +38,8 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
     private let input: ExplicitPasteShortcut
     private let trace: (String) -> Void
     private var lastSharedCommandEnabled: Bool?
+    private var restorationEnableRequested = false
+    private(set) var restorationConfirmationDeferred = false
 
     init(
         target: NSRunningApplication,
@@ -128,7 +131,38 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
         trace("prepare after revision=\(pasteboard.changeCount)")
     }
 
+    /// Called only with a source return validated against the pre-capture
+    /// original after sharing was suspended. Never rebind a published payload.
+    func acceptRevalidatedReturn(revision: Int) throws {
+        try validateConnection()
+        try input.checkReadiness(targetPID: pid)
+        guard !preparedTranscript, preparedRevision == nil,
+              pasteboard.changeCount == revision else { throw ScreenSharingClipboardMenuError.clipboardChanged }
+        let state = try readState()
+        guard !state.sharedClipboardEnabled else {
+            throw SharedClipboardSettingError.unconfirmed(expected: false, observed: state)
+        }
+        guard pasteboard.changeCount == revision else { throw ScreenSharingClipboardMenuError.clipboardChanged }
+        trace("returned original revalidated oldRevision=\(initialClipboardChangeCount) newRevision=\(revision)")
+        initialClipboardChangeCount = revision
+    }
+
     func readState() throws -> SharedClipboardMenuState {
+        if restorationEnableRequested { try requireRestorationObservation() }
+        do {
+            let state = try readMenuState()
+            if restorationEnableRequested { try requireRestorationObservation(requireEnabledMenu: true) }
+            return state
+        } catch {
+            if restorationEnableRequested, NSWorkspace.shared.frontmostApplication?.processIdentifier != pid {
+                restorationConfirmationDeferred = true
+                throw ScreenSharingClipboardMenuError.restorationObservationUnavailable
+            }
+            throw error
+        }
+    }
+
+    private func readMenuState() throws -> SharedClipboardMenuState {
         let items = try menuItems()
         // Completion needs command availability as well as the checkmark.
         // A missing attribute must not block the transfer transition itself.
@@ -151,6 +185,14 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
         return SharedClipboardMenuState(sharedClipboardEnabled: checked, sendClipboardEnabled: enabled.boolValue)
     }
 
+    private func requireRestorationObservation(requireEnabledMenu: Bool = false) throws {
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
+              !requireEnabledMenu || lastSharedCommandEnabled == true else {
+            restorationConfirmationDeferred = true
+            throw ScreenSharingClipboardMenuError.restorationObservationUnavailable
+        }
+    }
+
     func setSharedClipboardEnabled(_ enabled: Bool) throws {
         // Restoration may run after the user switched apps, but only if this
         // application's selected connection is still the captured window.
@@ -162,6 +204,7 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
             toggleOnce: {
                 if !enabled { try self.validateTargetAndClipboard() }
                 try Self.press(self.menuItems().shared, command: "Use Shared Clipboard")
+                if enabled { self.restorationEnableRequested = true }
                 self.trace("setting press returned requested=\(enabled)")
             },
             onState: { state in
@@ -217,6 +260,27 @@ final class ScreenSharingClipboardMenu: ExplicitClipboardTransferDriver {
         // Send availability/receipt validity are checked by the one attempt.
         // An empty/newer clipboard must not postpone recovery indefinitely.
         return state.sharedClipboardEnabled || lastSharedCommandEnabled == true ? .ready : .waitingForMenu
+    }
+
+    /// Used only after the single enable action returned but observation was
+    /// lost. Do not send a clipboard, toggle, activate, or inspect another window.
+    func observeRestoredSharing() throws -> ClipboardSharingObservation {
+        guard NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == "com.apple.ScreenSharing" else {
+            throw ScreenSharingClipboardMenuError.targetChanged
+        }
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return .waitingForTarget }
+        do {
+            try validateConnection()
+            let state = try readState()
+            return state.sharedClipboardEnabled ? .enabled : .disabled
+        } catch ScreenSharingClipboardMenuError.restorationObservationUnavailable {
+            return NSWorkspace.shared.frontmostApplication?.processIdentifier == pid ? .waitingForMenu : .waitingForTarget
+        } catch {
+            // A focus switch can race the AX query itself. A different connection
+            // while the client remains foreground is still a terminal refusal.
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier != pid { return .waitingForTarget }
+            throw error
+        }
     }
 
     private func validateConnection() throws {

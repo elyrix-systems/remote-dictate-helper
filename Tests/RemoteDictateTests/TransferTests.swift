@@ -92,6 +92,25 @@ func testExplicitClipboardTransferRecovery() throws {
         if !condition { throw TransferProbeError.invariant(message) }
     }
     let transaction = ExplicitClipboardTransfer()
+    // Suspension must leave publication to the caller, and a cancelled
+    // pre-publication operation must still restore its sharing lease exactly once.
+    let suspended = TransferProbe()
+    let suspendedLease = try transaction.suspendSharing(using: suspended)
+    try check(suspended.actions == ["off"], "Suspension must not publish or send")
+    try suspendedLease.restoreSharing(); try suspendedLease.restoreSharing()
+    try check(suspended.actions == ["off", "on"], "No-write cancellation must restore sharing once")
+    let staged = TransferProbe()
+    let stagedLease = try transaction.suspendSharing(using: staged)
+    staged.actions.append("revalidate")
+    try transaction.prepareAndSend(using: staged)
+    try stagedLease.restoreSharing()
+    try check(staged.actions == ["off", "revalidate", "prepare", "send", "on"], "Confirm the original before publication")
+    let resumedSharing = TransferProbe()
+    let resumedLease = try transaction.suspendSharing(using: resumedSharing)
+    resumedSharing.enabled = true
+    expectThrows(try transaction.prepareAndSend(using: resumedSharing), "Do not publish if sharing resumed")
+    try resumedLease.restoreSharing()
+    try check(!resumedSharing.actions.contains("prepare"), "Failed suspension invariant must prevent publication")
     for fault in TransferProbe.Fault.allCases {
         let driver = TransferProbe(fault)
         var failure: Error?

@@ -44,7 +44,8 @@ outside its client and starts fresh on return.
 
 An idle Screen Sharing baseline read that times out no longer permanently
 excludes that clipboard revision. It can retry after 0.5, 2 and 5 seconds, each
-with the existing 250 ms isolated-reader limit and at most one sample in flight.
+with a one-second idle isolated-reader limit and at most one sample in flight.
+An incoming paste cancels that idle reader; its capture budget remains unchanged.
 After four failures the same revision is left alone until a new revision or a
 new client-focus scope. Oversized data is refused without retries. Recovery
 only records a complete pre-paste snapshot; it never captures an already missed
@@ -159,9 +160,39 @@ do not qualify for this equivalence. `keepsTranscript` is an explicit advanced
 source contract that permits the preceding snapshot after V-up. There is no
 heuristic fallback between these protocols.
 
-Successful input allows restoration after 200 ms; partial/failed input retains
+Before publishing a captured Screen Sharing payload, the app first suspends
+sharing and retains the cleanup lease. It then confirms the source return again
+under that lease, within the same five-second operation deadline. The target,
+captured payload revision and pre-capture original entry/snapshot must match the
+first result. Only this validated return may establish a fresh replay baseline.
+This tolerates a bridge reply arriving during the sharing-off transition without
+blindly ignoring a changed clipboard. Once the replay baseline is established,
+even an equal-text new copy still invalidates publication; after publication,
+the existing ownership guard protects restoration. Cancellation before any
+clipboard write must still restore the sharing lease. `begin(using:)` retains
+its one-shot behavior for library clients; the app uses `suspendSharing(using:)`
+and `prepareAndSend(using:)` with return validation between them.
+
+During source-return preparation, transient isolated-reader failures or changing
+revisions permit at most four attempts, each capped at 250 ms and the remaining
+release budget. An unchanged failed revision gets a 50 ms pause; a replacement
+can be read immediately. Matching still uses the pre-capture original snapshots.
+Input/context cancellation, unrelated readable data and oversized data remain
+terminal. The five-second deadline also rejects an otherwise matching result
+that arrives too late. The recovery does not post keys or write the clipboard.
+
+Successful input allows restoration after two seconds; partial/failed input retains
 the five-second protection interval. Those allowances do not establish remote
 consumption. Revision checks, including equal-text copies, protect newer content.
+
+If the sharing-enable request returns but its menu becomes unavailable during
+confirmation, keep the completion obligation and wait for the original target.
+Read-only confirmation resumes when that window and its menu can be observed;
+it never resends the clipboard or toggles sharing again. A stable disabled state,
+a different connection, or an earlier restored-clipboard Send failure remains
+an error. Time spent in another app cannot be interpreted as a disabled setting.
+The status describes pending/incomplete clipboard sync instead of exposing the
+internal Screen Sharing checkbox as a user responsibility.
 
 ## Clipboard provider isolation
 

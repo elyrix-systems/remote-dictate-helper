@@ -160,7 +160,7 @@ func testAsyncCaptureAndExpiredDecision() async throws {
     let baseline = try restore.captureReplayBaseline(releasedRevision: result.releasedRevision, session: session)
     try restore.writeCapturedSnapshot(result.payload.snapshot, text: result.payload.text, session: session, replacing: baseline)
     restore.recordPastePosted(session); restore.finish(session)
-    clock = 0.2; restore.restoreIfDue()
+    clock = 2; restore.restoreIfDue()
     expectEqual(board.string(forType: .string), "ORIGINAL")
     expectTrue(errors.isEmpty)
     monitor.discard(captured); id = nil
@@ -189,7 +189,7 @@ private func isolationTestReader() -> IsolatedClipboardReader {
 @MainActor func testDeferredBaselineRecovery() async throws {
     let board = NSPasteboard(name: .init("rdh-deferred-baseline-\(UUID())"))
     defer { board.releaseGlobally() }
-    let owner = try provider(for: board, delay: 0.6)
+    let owner = try provider(for: board, delay: 1.4)
     defer { stopFixture(owner) }
     let revision = board.changeCount
     var clock: TimeInterval = 0, reports: [String] = []
@@ -216,4 +216,128 @@ private func isolationTestReader() -> IsolatedClipboardReader {
     expectTrue(reports.contains(where: { $0.contains("baseline recovered") }), "Delayed provider should recover: \(reports)")
     expectEqual(board.changeCount, revision)
     print("Actual deferred provider: first isolated reader times out; same-revision baseline recovers without input or clipboard writes")
+}
+
+@MainActor func testIdleBaselineRoundTripAndPreemption() async throws {
+    let board = NSPasteboard(name: .init("rdh-baseline-roundtrip-\(UUID())"))
+    defer { board.releaseGlobally() }
+    let access = ClipboardAccess(reader: isolationTestReader())
+    var id: UUID?, messages: [String] = []
+    let monitor = DictationPasteMonitor(board: board, access: access, targetPID: { 100 }, isAvailable: { true },
+        onCaptured: { id = $0 }, onError: { fail("\($0)") }, report: { messages.append($0) },
+        diagnostic: { messages.append($0) })
+    defer { monitor.stop() }
+    let owner = try provider(for: board, delay: 0.45)
+    defer { stopFixture(owner) }
+    monitor.scheduleSample()
+    for _ in 0..<200 {
+        if messages.contains(where: { $0.contains("read_ready stage=baseline") }) { break }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    expectTrue(messages.contains(where: { $0.contains("read_ready stage=baseline") }))
+    expectFalse(messages.contains(where: { $0.contains("baseline unavailable") }), "A normal 450ms round trip must not discard the baseline")
+
+    // A stuck idle provider must not hold the capture slot for the full second.
+    let (events, signal) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    let slow = try provider(for: board, delay: 60, onRead: { _ = signal.yield(()) })
+    defer { stopFixture(slow); signal.finish() }
+    monitor.scheduleSample()
+    let reading = await withTaskGroup(of: Bool.self) { group in
+        group.addTask {
+            var iterator = events.makeAsyncIterator()
+            return await iterator.next() != nil
+        }
+        group.addTask {
+            try? await Task.sleep(for: .seconds(2))
+            return false
+        }
+        let result = await group.next() ?? false
+        group.cancelAll()
+        return result
+    }
+    expectTrue(reading, "The named-board provider must enter its read before capture preemption is tested")
+    board.clearContents(); expectTrue(board.setString("NEW DICTATION", forType: .string))
+    let decision = PasteCaptureDecision()
+    monitor.handle(.init(kind: .down, key: 9, command: true, pid: 42, fromDictation: true), decision: decision)
+    let accepted = await Task.detached { decision.wait() }.value
+    expectTrue(accepted, "Cancelled idle read must yield promptly to the ordinary capture budget: \(messages)")
+    let captured = try expectUnwrap(id)
+    monitor.observe(.init(kind: .up, key: 9, command: false, pid: 42, fromDictation: true))
+    board.clearContents(); expectTrue(board.setString("SYNTHETIC-DEFERRED-文字", forType: .string))
+    let result = try await monitor.waitForRelease(captured)
+    expectEqual(result.payload.text, "NEW DICTATION")
+    expectEqual(result.original.text, "SYNTHETIC-DEFERRED-文字")
+    print("Idle baseline: 450ms provider observed without a gap; hung idle reader yields to bounded capture")
+}
+
+/// Accepted input may see a slow remote echo before the source restores its
+/// clipboard. All providers here run on disposable named boards in owned children.
+@MainActor func testSourceReturnReadRecovery() async throws {
+    enum Scenario: CaseIterable { case sameRevision, replacement, readRace, input, focus, deadline, permanent, unmatched }
+    for scenario in Scenario.allCases {
+        let board = NSPasteboard(name: .init("rdh-return-recovery-\(UUID())"))
+        defer { board.releaseGlobally() }
+        let access = ClipboardAccess(reader: isolationTestReader())
+        let original = "SYNTHETIC-DEFERRED-文字"
+        var clock: TimeInterval = 0, target: pid_t? = 100
+        var captured: UUID?, captures = 0, failures = 0
+        var raced = false
+        weak var observedMonitor: DictationPasteMonitor?
+        func copy(_ text: String) { board.clearContents(); expectTrue(board.setString(text, forType: .string)) }
+        let monitor = DictationPasteMonitor(board: board, access: access, targetPID: { target },
+            isAvailable: { true }, now: { clock }, onCaptured: { captured = $0; captures += 1 },
+            onError: { fail("Unexpected capture error: \($0)") }, report: { message in
+                guard message.hasPrefix("source return read failed") else { return }
+                failures += 1
+                guard failures == 1 else { return }
+                switch scenario {
+                case .replacement: copy(original)
+                case .input: observedMonitor?.observe(.init(kind: .mouse, key: 0, command: false, pid: 7, fromDictation: false))
+                case .focus: target = nil
+                case .deadline: copy(original); clock = 5
+                case .unmatched: copy("UNRELATED NEW COPY")
+                default: break
+                }
+            }, diagnostic: { message in
+                if scenario == .readRace, !raced, message.contains("clipboard.read_ready stage=source-return") {
+                    raced = true; copy(original)
+                }
+            })
+        observedMonitor = monitor
+        defer { monitor.stop() }
+        copy(original); try await access.prepare(board); monitor.sample()
+        let originalSnapshot = try access.read(board).snapshot
+        copy("CURRENT TRANSCRIPT"); try await access.prepare(board)
+        expectTrue(monitor.observe(.init(kind: .down, key: 9, command: true, pid: 42, fromDictation: true)))
+        let id = try expectUnwrap(captured)
+        expectTrue(monitor.observe(.init(kind: .up, key: 9, command: false, pid: 42, fromDictation: true)))
+        let delay: TimeInterval = scenario == .sameRevision ? 0.6 : scenario == .readRace ? 0.025 : 60
+        let owner = try provider(for: board, delay: delay)
+        defer { stopFixture(owner) }
+        let slowRevision = board.changeCount
+        do {
+            let result = try await monitor.waitForRelease(id)
+            expectTrue(scenario == .sameRevision || scenario == .replacement || scenario == .readRace)
+            expectEqual(result.payload.text, "CURRENT TRANSCRIPT")
+            expectEqual(result.original.snapshot, originalSnapshot)
+            expectEqual(result.releasedRevision, board.changeCount)
+            if scenario == .sameRevision { expectEqual(board.changeCount, slowRevision) }
+            else { expectTrue(board.changeCount != slowRevision) }
+        } catch let error as DictationCaptureError {
+            switch (scenario, error) {
+            case (.input, .inputChanged), (.focus, .targetChanged), (.deadline, .releaseTimeout), (.unmatched, .originalUnknown): break
+            default: fail("Unexpected source-return failure for \(scenario): \(error)")
+            }
+        } catch IsolatedClipboardError.timedOut {
+            expectEqual(scenario, .permanent)
+        }
+        expectTrue(failures > 0 && failures <= 4)
+        if scenario == .permanent { expectEqual(failures, 4) }
+        if scenario == .unmatched {
+            expectEqual(board.string(forType: .string), "UNRELATED NEW COPY", "Do not overwrite an unmatched return")
+        }
+        expectEqual(captures, 1, "Recovery cannot synthesize a second capture")
+        monitor.discard(id)
+    }
+    print("Source return: real delayed/changed providers recover; read budget, input/focus, deadline and unknown-copy guards remain")
 }

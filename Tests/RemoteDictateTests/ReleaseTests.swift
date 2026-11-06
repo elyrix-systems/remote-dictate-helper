@@ -1,6 +1,49 @@
 import AppKit
 
 final class ReleaseTests {
+    @MainActor func testReturnReconfirmation() throws {
+        for mode in ["same", "older", "unknown", "input"] {
+            let board = NSPasteboard(name: .init("rdh-reconfirm-\(UUID())"))
+            defer { board.releaseGlobally() }
+            let access = eagerTestClipboardAccess()
+            var id: UUID?
+            let monitor = DictationPasteMonitor(board: board, access: access, targetPID: { 100 }, isAvailable: { true },
+                onCaptured: { id = $0 }, onError: { fail("\($0)") })
+            defer { monitor.stop() }
+            func copy(_ text: String) { board.clearContents(); expectTrue(board.setString(text, forType: .string)) }
+            copy("OLDER"); monitor.sample()
+            copy("ORIGINAL"); monitor.sample()
+            copy("DICTATION")
+            expectTrue(monitor.observe(.init(kind: .down, key: 9, command: true, pid: 42, fromDictation: true)))
+            let capturedID = try expectUnwrap(id)
+            monitor.observe(.init(kind: .up, key: 9, command: false, pid: 42, fromDictation: true))
+            copy("ORIGINAL")
+            let first = try expectUnwrap(monitor.completeIfReleased(capturedID))
+            // Model a clipboard update while the sharing-off action is in flight.
+            copy(mode == "older" ? "OLDER" : mode == "unknown" ? "NEW COPY" : "ORIGINAL")
+            if mode == "input" {
+                monitor.observe(.init(kind: .down, key: 8, command: true, pid: 0, fromDictation: false))
+            }
+            do {
+                let confirmed = try expectUnwrap(monitor.completeIfReleased(capturedID))
+                try confirmed.validateContinuation(of: first)
+                expectEqual(mode, "same")
+                expectTrue(confirmed.releasedRevision != first.releasedRevision)
+                let restore = LocalClipboardRestoration(board: board, access: access)
+                let session = try restore.begin(observedOriginal: first.original.snapshot)
+                let baseline = try restore.captureReplayBaseline(releasedRevision: confirmed.releasedRevision, session: session)
+                // Even an equal-text new copy after the new baseline must still cancel.
+                copy("ORIGINAL")
+                expectThrows(try restore.writeCapturedSnapshot(first.payload.snapshot, text: first.payload.text,
+                    session: session, replacing: baseline))
+                expectEqual(board.string(forType: .string), "ORIGINAL")
+            } catch {
+                expectTrue(mode != "same", "The same validated original should remain usable: \(error)")
+            }
+        }
+        print("Return reconfirmation: same original after suspension accepted; older/unknown/input rejected; later equal-text copy protected")
+    }
+
     @MainActor func testReturnBeforePasteStartsFreshTransaction() throws {
         let board = NSPasteboard(name: .init("rdh-focus-return-\(UUID())")); defer { board.releaseGlobally() }
         var target: pid_t? = 100
@@ -46,7 +89,12 @@ final class ReleaseTests {
                 let revision = board.changeCount
                 clock = 0.5
                 let first = try monitor.completeIfReleased(id)
-                if keyUp && clipboardReturned { expectNotNil(first) }
+                if keyUp && clipboardReturned {
+                    expectNotNil(first)
+                    clock = 5
+                    do { _ = try monitor.completeIfReleased(id); fail("Even a matching result cannot replay after the deadline") }
+                    catch DictationCaptureError.releaseTimeout { }
+                }
                 else {
                     expectNil(first)
                     clock = 5
